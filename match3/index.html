@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>消消乐</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;height:100dvh}
+body{
+  background:#0f172a;color:#e2e8f0;
+  font-family:system-ui,-apple-system,"PingFang SC","Noto Sans SC",sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:100vh;touch-action:none;user-select:none;-webkit-user-select:none;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow:hidden;
+}
+h1{font-size:26px;margin-bottom:6px;letter-spacing:4px;font-weight:700}
+.bar{display:flex;gap:14px;margin-bottom:8px;font-size:14px;flex-wrap:wrap;justify-content:center}
+.bar span{white-space:nowrap}
+.bar b{color:#facc15}
+#wrap{position:relative}
+canvas{background:#1e293b;border-radius:12px;box-shadow:0 0 30px rgba(250,204,21,.15);display:block;touch-action:none}
+#overlay{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(15,23,42,.86);border-radius:12px;gap:12px;text-align:center;padding:16px;
+}
+#overlay h2{font-size:28px;letter-spacing:2px}
+#overlay p{font-size:14px;color:#94a3b8;line-height:1.7}
+#best{color:#facc15!important;font-weight:700}
+button{background:#facc15;color:#0f172a;border:0;padding:10px 28px;border-radius:999px;font-size:16px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:active{transform:scale(.97)}
+#toast{
+  position:absolute;left:50%;bottom:18px;transform:translateX(-50%);
+  background:rgba(15,23,42,.92);color:#facc15;font-size:13px;padding:8px 14px;border-radius:999px;
+  opacity:0;pointer-events:none;transition:opacity .25s;white-space:nowrap;
+}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<h1>💎 消消乐</h1>
+<div class="bar">
+  <span>得分 <b id="score">0</b></span>
+  <span>目标 <b id="target">1000</b></span>
+  <span>步数 <b id="moves">20</b></span>
+  <span>关卡 <b id="level">1</b></span>
+</div>
+<div id="wrap">
+<canvas id="c"></canvas>
+<div id="overlay">
+  <h2 id="title">消消乐</h2>
+  <p id="msg">手指滑动交换相邻的宝石，三个连成一线就能消除</p>
+  <p id="best">最高分 0</p>
+  <button id="btn">开始游戏</button>
+</div>
+<div id="toast">没有可消除的组合，重新排列</div>
+</div>
+<script>
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const $=id=>document.getElementById(id);
+const COLS=8,ROWS=8,TYPES=6,CELL=54,PAD=8;
+const W=PAD*2+COLS*CELL,H=PAD*2+ROWS*CELL;
+const SWAP_MS=200,CLEAR_MS=320,HINT_MS=5000;
+const GEMS=[
+  {c:'#ef4444',d:'#991b1b',l:'#fecaca'},
+  {c:'#f97316',d:'#9a3412',l:'#fed7aa'},
+  {c:'#eab308',d:'#854d0e',l:'#fef08a'},
+  {c:'#22c55e',d:'#166534',l:'#bbf7d0'},
+  {c:'#3b82f6',d:'#1e40af',l:'#bfdbfe'},
+  {c:'#a855f7',d:'#6b21a8',l:'#e9d5ff'}
+];
+const cv=$('c'),ctx=cv.getContext('2d');
+let dpr=1;
+function setupCanvas(){
+  dpr=Math.min(window.devicePixelRatio||1,3);
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  fit();
+}
+function fit(){
+  const sc=Math.min((innerWidth-24)/W,(innerHeight-150)/H);
+  cv.style.width=Math.floor(W*sc)+'px';
+  cv.style.height=Math.floor(H*sc)+'px';
+}
+addEventListener('resize',()=>{setupCanvas();});
+setupCanvas();
+
+let grid=Array.from({length:ROWS},()=>Array(COLS).fill(null)),score=0,best=+(store.get('match3_best')||0),target=1000,moves=20,level=1;
+let state='idle',sel=null,hint=null,idleT=0,last=0,mode='start';
+let anim=null,particles=[],floaters=[],toastTimer=0,playing=false,gid=1;
+
+function cfg(lv){return{target:1000+(lv-1)*800,moves:Math.max(12,20-Math.floor((lv-1)/2)*2)};}
+function cx(c){return PAD+c*CELL+CELL/2}
+function cy(r){return PAD+r*CELL+CELL/2}
+function randType(){return Math.floor(Math.random()*TYPES)}
+function makeGem(type,r,c){return{id:gid++,type,px:cx(c),py:cy(r),scale:1,alpha:1}}
+function upd(){
+  $('score').textContent=score;
+  $('target').textContent=target;
+  $('moves').textContent=moves;
+  $('level').textContent=level;
+  if(score>best){best=score;store.set('match3_best',String(best));}
+  $('best').textContent='最高分 '+best;
+}
+function showToast(t){
+  const el=$('toast');el.textContent=t;el.classList.add('show');
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),1400);
+}
+
+function createsMatch(g,r,c,type){
+  let h=1;for(let cc=c-1;cc>=0&&g[r][cc]&&g[r][cc].type===type;cc--)h++;
+  let v=1;for(let rr=r-1;rr>=0&&g[rr][c]&&g[rr][c].type===type;rr--)v++;
+  return h>=3||v>=3;
+}
+function findMatches(g){
+  const mark=Array.from({length:ROWS},()=>Array(COLS).fill(false));
+  for(let r=0;r<ROWS;r++){
+    let n=1;
+    for(let c=1;c<=COLS;c++){
+      if(c<COLS&&g[r][c]&&g[r][c-1]&&g[r][c].type===g[r][c-1].type)n++;
+      else{if(n>=3)for(let k=c-n;k<c;k++)mark[r][k]=true;n=1;}
+    }
+  }
+  for(let c=0;c<COLS;c++){
+    let n=1;
+    for(let r=1;r<=ROWS;r++){
+      if(r<ROWS&&g[r][c]&&g[r-1][c]&&g[r][c].type===g[r-1][c].type)n++;
+      else{if(n>=3)for(let k=r-n;k<r;k++)mark[k][c]=true;n=1;}
+    }
+  }
+  const cells=[];
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(mark[r][c]&&g[r][c])cells.push({r,c,type:g[r][c].type});
+  return cells;
+}
+function swapCells(g,r1,c1,r2,c2){const t=g[r1][c1];g[r1][c1]=g[r2][c2];g[r2][c2]=t;}
+function listMoves(g){
+  const moves=[];
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    if(c+1<COLS){swapCells(g,r,c,r,c+1);if(findMatches(g).length)moves.push({r1:r,c1:c,r2:r,c2:c+1});swapCells(g,r,c,r,c+1);}
+    if(r+1<ROWS){swapCells(g,r,c,r+1,c);if(findMatches(g).length)moves.push({r1:r,c1:c,r2:r+1,c2:c});swapCells(g,r,c,r+1,c);}
+  }
+  return moves;
+}
+function generateBoard(){
+  for(let attempt=0;attempt<80;attempt++){
+    const g=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+    let ok=true;
+    for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+      const order=[0,1,2,3,4,5];
+      for(let i=order.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));const t=order[i];order[i]=order[j];order[j]=t;}
+      let placed=false;
+      for(const t of order){if(!createsMatch(g,r,c,t)){g[r][c]=makeGem(t,r,c);placed=true;break;}}
+      if(!placed){ok=false;g[r][c]=makeGem(order[0],r,c);}
+    }
+    if(ok&&!findMatches(g).length&&listMoves(g).length)return g;
+  }
+  const g=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)g[r][c]=makeGem((r*3+c*2)%TYPES,r,c);
+  return g;
+}
+
+function showOverlay(m,title,msg,btn){
+  mode=m;playing=false;sel=null;hint=null;
+  $('title').textContent=title;
+  $('msg').textContent=msg;
+  $('best').style.display=m==='start'?'block':'none';
+  $('best').textContent='最高分 '+best;
+  $('btn').textContent=btn;
+  $('overlay').style.display='flex';
+}
+function hideOverlay(){$('overlay').style.display='none';}
+
+function startLevel(lv){
+  level=lv;
+  const cf=cfg(lv);
+  target=cf.target;moves=cf.moves;score=0;
+  grid=generateBoard();
+  sel=null;hint=null;idleT=0;anim=null;particles=[];floaters=[];
+  state='idle';playing=true;upd();hideOverlay();
+}
+function onWin(){
+  upd();
+  showOverlay('win','过关了！','第 '+level+' 关完成，得分 '+score+'（目标 '+target+'）','下一关');
+}
+function onLose(){
+  upd();
+  showOverlay('lose','步数用完了','得分 '+score+' / 目标 '+target,'再来一次');
+}
+$('btn').onclick=()=>{
+  if(mode==='win')startLevel(level+1);
+  else if(mode==='lose')startLevel(level);
+  else startLevel(1);
+};
+
+function toCanvas(cx0,cy0){
+  const r=cv.getBoundingClientRect();
+  return{x:(cx0-r.left)*(W/r.width),y:(cy0-r.top)*(H/r.height)};
+}
+function cellAt(x,y){
+  const c=Math.floor((x-PAD)/CELL),r=Math.floor((y-PAD)/CELL);
+  if(r<0||c<0||r>=ROWS||c>=COLS)return null;
+  return{r,c};
+}
+function inBounds(r,c){return r>=0&&c>=0&&r<ROWS&&c<COLS}
+
+let ptr=null;
+function onDown(e){
+  if(!playing||state!=='idle')return;
+  const p=toCanvas(e.clientX,e.clientY);
+  const cell=cellAt(p.x,p.y);
+  if(!cell){ptr=null;return;}
+  try{cv.setPointerCapture(e.pointerId)}catch(err){}
+  ptr={x:p.x,y:p.y,r:cell.r,c:cell.c,swiped:false};
+  idleT=0;hint=null;
+}
+function onMove(e){
+  if(!ptr||ptr.swiped||state!=='idle'||!playing)return;
+  const p=toCanvas(e.clientX,e.clientY);
+  const dx=p.x-ptr.x,dy=p.y-ptr.y;
+  if(Math.max(Math.abs(dx),Math.abs(dy))<CELL*0.28)return;
+  const horiz=Math.abs(dx)>Math.abs(dy);
+  const r2=ptr.r+(horiz?0:(dy>0?1:-1));
+  const c2=ptr.c+(horiz?(dx>0?1:-1):0);
+  ptr.swiped=true;
+  trySwap(ptr.r,ptr.c,r2,c2);
+}
+function onUp(e){
+  if(!ptr)return;
+  if(!ptr.swiped&&state==='idle'&&playing){
+    const p=toCanvas(e.clientX,e.clientY);
+    const cell=cellAt(p.x,p.y)||{r:ptr.r,c:ptr.c};
+    handleTap(cell.r,cell.c);
+  }
+  ptr=null;
+}
+function handleTap(r,c){
+  if(!sel){sel={r,c};return;}
+  if(sel.r===r&&sel.c===c){sel=null;return;}
+  if(Math.abs(sel.r-r)+Math.abs(sel.c-c)===1){const a=sel;sel=null;trySwap(a.r,a.c,r,c);}
+  else sel={r,c};
+}
+cv.addEventListener('pointerdown',onDown);
+cv.addEventListener('pointermove',onMove);
+cv.addEventListener('pointerup',onUp);
+cv.addEventListener('pointercancel',onUp);
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+
+function trySwap(r1,c1,r2,c2){
+  if(!inBounds(r1,c1)||!inBounds(r2,c2)||(r1===r2&&c1===c2)||state!=='idle')return;
+  const a=grid[r1][c1],b=grid[r2][c2];
+  if(!a||!b)return;
+  sel=null;hint=null;
+  swapCells(grid,r1,c1,r2,c2);
+  const valid=findMatches(grid).length>0;
+  state='swap';
+  anim={kind:'swap',t:0,dur:SWAP_MS,r1,c1,r2,c2,valid,
+    aFrom:{x:a.px,y:a.py},aTo:{x:cx(c2),y:cy(r2)},
+    bFrom:{x:b.px,y:b.py},bTo:{x:cx(c1),y:cy(r1)}};
+}
+
+function beginClear(combo){
+  const cells=findMatches(grid);
+  if(!cells.length)return false;
+  const add=cells.length*20*combo+(Math.max(0,cells.length-3)*10*combo);
+  score+=add;upd();
+  let sx=0,sy=0;
+  for(const cl of cells){
+    const g=grid[cl.r][cl.c];
+    sx+=g.px;sy+=g.py;
+    burst(g.px,g.py,GEMS[g.type].c);
+  }
+  sx/=cells.length;sy/=cells.length;
+  floaters.push({x:sx,y:sy,text:'+'+add,t:0,life:800,combo});
+  if(combo>1)floaters.push({x:sx,y:sy-22,text:'连击 ×'+combo,t:0,life:900,combo});
+  state='clear';
+  anim={kind:'clear',t:0,dur:CLEAR_MS,cells,combo};
+  return true;
+}
+
+function applyGravity(combo){
+  const moving=[];
+  for(let c=0;c<COLS;c++){
+    const kept=[];
+    for(let r=ROWS-1;r>=0;r--)if(grid[r][c])kept.push(grid[r][c]);
+    const miss=ROWS-kept.length;
+    for(let i=0;i<miss;i++){
+      const gem=makeGem(randType(),-1-i,c);
+      gem.px=cx(c);gem.py=cy(-1-i);
+      kept.push(gem);
+    }
+    for(let r=ROWS-1;r>=0;r--){
+      const gem=kept[ROWS-1-r];
+      grid[r][c]=gem;
+      moving.push({gem,x0:gem.px,y0:gem.py,x1:cx(c),y1:cy(r)});
+    }
+  }
+  const maxDist=moving.reduce((m,it)=>Math.max(m,Math.hypot(it.x1-it.x0,it.y1-it.y0)),0);
+  state='fall';
+  anim={kind:'fall',t:0,dur:Math.max(260,180+maxDist*0.55),moving,combo};
+}
+
+function burst(x,y,color){
+  for(let i=0;i<8;i++){
+    const a=Math.random()*Math.PI*2,s=40+Math.random()*80;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,color});
+  }
+}
+
+function finishResolve(){
+  anim=null;
+  if(score>=target){state='idle';onWin();return;}
+  if(moves<=0){state='idle';onLose();return;}
+  if(!listMoves(grid).length){
+    showToast('没有可消除的组合，重新排列');
+    grid=generateBoard();
+  }
+  state='idle';idleT=0;hint=null;
+}
+
+function tick(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt/1000;p.y+=p.vy*dt/1000;p.vy+=180*dt/1000;p.life-=dt/450;
+    if(p.life<=0)particles.splice(i,1);
+  }
+  for(let i=floaters.length-1;i>=0;i--){
+    const f=floaters[i];f.t+=dt;if(f.t>=f.life)floaters.splice(i,1);
+  }
+  if(state==='idle'&&playing){
+    idleT+=dt;
+    if(idleT>=HINT_MS&&!hint){
+      const ms=listMoves(grid);
+      if(ms.length)hint=ms[Math.floor(Math.random()*ms.length)];
+    }
+    return;
+  }
+  if(!anim)return;
+  anim.t+=dt;
+  const k=Math.min(1,anim.t/anim.dur);
+  if(anim.kind==='swap'){
+    const e=k<1?k*(2-k):1;
+    const A=grid[anim.r2][anim.c2],B=grid[anim.r1][anim.c1];
+    if(A){A.px=anim.aFrom.x+(anim.aTo.x-anim.aFrom.x)*e;A.py=anim.aFrom.y+(anim.aTo.y-anim.aFrom.y)*e;}
+    if(B){B.px=anim.bFrom.x+(anim.bTo.x-anim.bFrom.x)*e;B.py=anim.bFrom.y+(anim.bTo.y-anim.bFrom.y)*e;}
+    if(k>=1){
+      if(A){A.px=anim.aTo.x;A.py=anim.aTo.y;}
+      if(B){B.px=anim.bTo.x;B.py=anim.bTo.y;}
+      if(anim.valid){moves--;upd();beginClear(1);}
+      else{
+        swapCells(grid,anim.r1,anim.c1,anim.r2,anim.c2);
+        const A2=grid[anim.r1][anim.c1],B2=grid[anim.r2][anim.c2];
+        state='swapback';
+        anim={kind:'swapback',t:0,dur:SWAP_MS,r1:anim.r1,c1:anim.c1,r2:anim.r2,c2:anim.c2,
+          aFrom:{x:A2.px,y:A2.py},aTo:{x:cx(anim.c1),y:cy(anim.r1)},
+          bFrom:{x:B2.px,y:B2.py},bTo:{x:cx(anim.c2),y:cy(anim.r2)}};
+      }
+    }
+  }else if(anim.kind==='swapback'){
+    const e=k<1?k*(2-k):1;
+    const A=grid[anim.r1][anim.c1],B=grid[anim.r2][anim.c2];
+    if(A){A.px=anim.aFrom.x+(anim.aTo.x-anim.aFrom.x)*e;A.py=anim.aFrom.y+(anim.aTo.y-anim.aFrom.y)*e;}
+    if(B){B.px=anim.bFrom.x+(anim.bTo.x-anim.bFrom.x)*e;B.py=anim.bFrom.y+(anim.bTo.y-anim.bFrom.y)*e;}
+    if(k>=1){
+      if(A){A.px=anim.aTo.x;A.py=anim.aTo.y;}
+      if(B){B.px=anim.bTo.x;B.py=anim.bTo.y;}
+      state='idle';anim=null;idleT=0;
+    }
+  }else if(anim.kind==='clear'){
+    const s=k<0.35?1+0.25*(k/0.35):1.25*(1-(k-0.35)/0.65);
+    const al=k<0.35?1:1-(k-0.35)/0.65;
+    for(const cl of anim.cells){
+      const g=grid[cl.r][cl.c];if(!g)continue;
+      g.scale=Math.max(0,s);g.alpha=Math.max(0,al);
+    }
+    if(k>=1){
+      for(const cl of anim.cells)grid[cl.r][cl.c]=null;
+      applyGravity(anim.combo);
+    }
+  }else if(anim.kind==='fall'){
+    const e=easeOutBack(k);
+    for(const it of anim.moving){
+      it.gem.px=it.x0+(it.x1-it.x0)*e;
+      it.gem.py=it.y0+(it.y1-it.y0)*e;
+      it.gem.scale=1;it.gem.alpha=1;
+    }
+    if(k>=1){
+      for(const it of anim.moving){it.gem.px=it.x1;it.gem.py=it.y1;}
+      if(!beginClear((anim.combo||1)+1))finishResolve();
+    }
+  }
+}
+function easeOutBack(t){const c1=1.70158,c3=c1+1;t=Math.min(1,t);return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2);}
+
+function drawGem(g,pulse){
+  const {c,d,l}=GEMS[g.type];
+  const x=g.px,y=g.py,sc=g.scale*(pulse||1),R=CELL*0.36*sc;
+  ctx.save();
+  ctx.globalAlpha=g.alpha;
+  ctx.beginPath();ctx.arc(x,y+2.2,R,0,Math.PI*2);ctx.fillStyle='rgba(0,0,0,.28)';ctx.fill();
+  const grd=ctx.createRadialGradient(x-R*0.3,y-R*0.35,R*0.1,x,y,R);
+  grd.addColorStop(0,l);grd.addColorStop(0.45,c);grd.addColorStop(1,d);
+  ctx.beginPath();ctx.arc(x,y,R,0,Math.PI*2);ctx.fillStyle=grd;ctx.fill();
+  ctx.beginPath();ctx.arc(x,y,R,0,Math.PI*2);ctx.strokeStyle=d;ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();ctx.ellipse(x-R*0.28,y-R*0.32,R*0.28,R*0.16,-0.5,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,255,255,.55)';ctx.fill();
+  ctx.restore();
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#1e293b';
+  roundRect(0,0,W,H,12);ctx.fill();
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    ctx.fillStyle=(r+c)%2? '#162033':'#1a2740';
+    ctx.fillRect(PAD+c*CELL,PAD+r*CELL,CELL,CELL);
+  }
+  const pulse=hint?1+0.07*Math.sin(performance.now()/140):1;
+  const gems=[];
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(grid[r][c])gems.push({r,c,g:grid[r][c]});
+  gems.sort((a,b)=>a.g.py-b.g.py||a.g.id-b.g.id);
+  for(const it of gems){
+    const p=(hint&&((it.r===hint.r1&&it.c===hint.c1)||(it.r===hint.r2&&it.c===hint.c2)))?pulse:1;
+    drawGem(it.g,p);
+  }
+  if(sel&&grid[sel.r][sel.c]){
+    const g=grid[sel.r][sel.c];
+    ctx.beginPath();ctx.arc(g.px,g.py,CELL*0.42,0,Math.PI*2);
+    ctx.strokeStyle='#facc15';ctx.lineWidth=3;ctx.stroke();
+  }
+  if(hint&&state==='idle'){
+    ctx.strokeStyle='rgba(250,204,21,'+(0.45+0.35*Math.sin(performance.now()/140))+')';
+    ctx.lineWidth=2.5;
+    for(const p of [{r:hint.r1,c:hint.c1},{r:hint.r2,c:hint.c2}]){
+      const g=grid[p.r][p.c];if(!g)continue;
+      ctx.beginPath();ctx.arc(g.px,g.py,CELL*0.44,0,Math.PI*2);ctx.stroke();
+    }
+  }
+  for(const p of particles){
+    ctx.globalAlpha=Math.max(0,p.life);
+    ctx.fillStyle=p.color;
+    ctx.beginPath();ctx.arc(p.x,p.y,3.2,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+  }
+  for(const f of floaters){
+    const k=f.t/f.life;
+    ctx.globalAlpha=k<0.7?1:1-(k-0.7)/0.3;
+    ctx.fillStyle=f.combo>1&&f.text[0]!=='+'?'#fde68a':'#f8fafc';
+    ctx.font='bold '+(f.text[0]==='+'?18:15)+'px system-ui,-apple-system,sans-serif';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(f.text,f.x,f.y-k*28);
+    ctx.globalAlpha=1;
+  }
+}
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+}
+
+function loop(t){
+  const dt=Math.min(t-(last||t),40);
+  last=t;
+  try{tick(dt);draw();}catch(err){console.error(err);}
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+upd();
+
+window.__test={
+  get score(){return score},
+  get moves(){return moves},
+  get level(){return level},
+  get state(){return state},
+  get playing(){return playing},
+  get target(){return target},
+  findMoves(){return listMoves(grid)},
+  board(){return grid.map(row=>row.map(g=>g&&g.type))},
+  cellRect(r,c){
+    const rect=cv.getBoundingClientRect();
+    return{x:rect.left+cx(c)*(rect.width/W),y:rect.top+cy(r)*(rect.height/H)};
+  }
+};
+</script>
+</body>
+</html>
