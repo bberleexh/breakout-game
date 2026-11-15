@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<title>拧螺丝解谜</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  height:100%;overflow:hidden;background:#eaf6ff;color:#2a3340;
+  font-family:system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",sans-serif;
+  display:flex;align-items:center;justify-content:center;
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+  overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
+}
+#wrap{position:relative;line-height:0}
+canvas{display:block;border-radius:16px;box-shadow:0 8px 28px rgba(40,80,120,.18)}
+#overlay,#pauseMenu{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(180,214,235,.28);border-radius:16px;gap:0;text-align:center;padding:20px 16px;z-index:5;
+}
+#pauseMenu{background:rgba(20,40,60,.45);gap:14px}
+#card{
+  background:rgba(255,255,255,.94);border-radius:22px;padding:22px 18px 20px;width:min(300px,86%);
+  box-shadow:0 10px 30px rgba(40,80,120,.18);display:flex;flex-direction:column;align-items:center;gap:12px;
+}
+#overlay.hidden,#pauseMenu.hidden,#playUi.hidden{display:none}
+#overlay h1{font-size:30px;letter-spacing:2px;font-weight:800;color:#2a5f9e;text-shadow:0 2px 0 #d6ebff}
+#pauseMenu h1{font-size:34px;letter-spacing:2px;font-weight:800;color:#fff;text-shadow:0 3px 0 #3a7bd5,0 6px 12px rgba(0,0,0,.25)}
+#overlay p{font-size:14px;color:#3a5268;line-height:1.7;max-width:240px}
+#pauseMenu p{font-size:15px;color:#f4fbff;line-height:1.7;max-width:270px;text-shadow:0 1px 4px rgba(0,0,0,.35)}
+.stats{font-size:16px;color:#3a5268;font-weight:700;line-height:1.8}
+.stats b{color:#e09b00}
+#pauseMenu .stats{color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.35)}
+#pauseMenu .stats b{color:#ffd54a}
+button.main{
+  background:#ffd54a;color:#3a2a0a;border:3px solid #c27a14;padding:12px 36px;border-radius:999px;
+  font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 4px 0 #c27a14;font-family:inherit;
+}
+button.main:active{transform:translateY(2px);box-shadow:0 2px 0 #c27a14}
+button.ghost{
+  background:#fff;color:#2a3340;border:3px solid #8ab4d8;padding:10px 28px;border-radius:999px;
+  font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 3px 0 #8ab4d8;font-family:inherit;
+}
+#playUi{position:absolute;inset:0;pointer-events:none;z-index:3;border-radius:16px}
+#playUi button,#playUi .item{pointer-events:auto}
+#pauseBtn{
+  position:absolute;left:12px;top:12px;width:42px;height:42px;border:0;border-radius:50%;
+  background:#3b89f0;color:#fff;box-shadow:0 3px 0 #1f63c4;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+#pauseBtn::before{content:"";width:12px;height:16px;border-left:4px solid #fff;border-right:4px solid #fff;}
+#levelTag{
+  position:absolute;left:50%;top:16px;transform:translateX(-50%);
+  background:#2b3340;color:#fff;border-radius:999px;padding:6px 16px;font-size:14px;font-weight:800;
+}
+#progTag{
+  position:absolute;right:12px;top:168px;background:rgba(255,255,255,.9);border-radius:12px;
+  padding:6px 8px 6px 8px;font-size:11px;font-weight:800;color:#5a6573;text-align:center;line-height:1.3;
+  box-shadow:0 2px 8px rgba(0,0,0,.08);min-width:52px;
+}
+#items{
+  position:absolute;left:0;right:0;bottom:8px;display:flex;justify-content:center;gap:12px;
+}
+.item{
+  width:82px;height:70px;background:#fff;border:0;border-radius:16px;box-shadow:0 3px 0 #c5d6ea;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;
+  font-family:inherit;position:relative;color:#3a4550;
+}
+.item.armed{outline:3px solid #3b89f0;outline-offset:1px}
+.item.off{opacity:.45}
+.item .ico{font-size:22px;font-weight:900;line-height:1}
+.item .lab{font-size:11px;font-weight:800}
+.item .uses{
+  position:absolute;top:-6px;right:-6px;background:#3ddc5a;color:#fff;border-radius:50%;
+  width:20px;height:20px;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 1px 0 #1ea03a;
+}
+#toast{
+  position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);background:rgba(30,40,55,.84);
+  color:#fff;padding:8px 14px;border-radius:10px;font-size:14px;font-weight:700;pointer-events:none;
+  opacity:0;transition:opacity .2s;z-index:6;white-space:nowrap;
+}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="playUi" class="hidden">
+    <button id="pauseBtn" type="button" aria-label="暂停"></button>
+    <div id="levelTag">第1关</div>
+    <div id="progTag">📦<br>进度<br><b id="prog">0%</b></div>
+    <div id="items">
+      <button class="item" id="itAdd" type="button"><span class="uses" id="uAdd">1</span><span class="ico" style="color:#3ddc5a">+1</span><span class="lab">加孔位</span></button>
+      <button class="item" id="itClear" type="button"><span class="uses" id="uClear">1</span><span class="ico">🖌️</span><span class="lab">清空孔位</span></button>
+      <button class="item" id="itMelt" type="button"><span class="uses" id="uMelt">0</span><span class="ico">🧪</span><span class="lab">熔玻璃</span></button>
+    </div>
+  </div>
+  <div id="toast"></div>
+  <div id="overlay">
+    <div id="card">
+      <h1 id="title">拧螺丝解谜</h1>
+      <p id="msg">点螺丝拧出，放进同色盒子；清掉全部板子就过关</p>
+      <div id="endStats" class="stats" hidden></div>
+      <button class="main" id="start" type="button">开始游戏</button>
+    </div>
+  </div>
+  <div id="pauseMenu" class="hidden">
+    <h1>暂停</h1>
+    <button class="main" id="resume" type="button">继续</button>
+    <button class="ghost" id="restart" type="button">重玩本关</button>
+    <button class="ghost" id="home" type="button">返回首页</button>
+  </div>
+</div>
+<script>
+(function(){
+  const store = {
+    get(k){ try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k,v){ try { localStorage.setItem(k,v); } catch (e) {} }
+  };
+
+  const W=390, H=700, SR=15;
+  const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+  const dpr=Math.min(2, window.devicePixelRatio||1);
+  cv.width=W*dpr; cv.height=H*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const $=id=>document.getElementById(id);
+
+  function fit(){
+    const sc=Math.min((innerWidth-16)/W,(innerHeight-16)/H);
+    cv.style.width=(W*sc)+'px'; cv.style.height=(H*sc)+'px';
+  }
+  addEventListener('resize',fit); addEventListener('orientationchange',fit); fit();
+
+  const SCREW = {
+    green:'#3ddc5a', brown:'#8B5A2B', purple:'#A855F7', yellow:'#F5C400',
+    pink:'#FF5A9A', blue:'#3BA3F0', orange:'#FF8A3D'
+  };
+  const SCREW_IN = {
+    green:'#d8ffb0', brown:'#e8c9a0', purple:'#f0d4ff', yellow:'#fff4b0',
+    pink:'#ffd0e4', blue:'#d0eeff', orange:'#ffe0c4'
+  };
+
+  function rect(w,h){ return [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]]; }
+  function polyL(w,h,t,mirror){
+    let p=[[-w/2,-h/2],[w/2,-h/2],[w/2,-h/2+t],[-w/2+t,-h/2+t],[-w/2+t,h/2],[-w/2,h/2]];
+    if(mirror) p=p.map(([x,y])=>[-x,y]);
+    return p;
+  }
+  function star(r, inner){
+    const pts=[]; inner=inner||0.42;
+    for(let i=0;i<10;i++){
+      const a=-Math.PI/2+i*Math.PI/5, rad=i%2===0?r:r*inner;
+      pts.push([Math.cos(a)*rad, Math.sin(a)*rad]);
+    }
+    return pts;
+  }
+  function polyT(w,h,t){
+    const hw=w/2, hh=h/2;
+    return [[-hw,-hh],[hw,-hh],[hw,-hh+t],[t/2,-hh+t],[t/2,hh],[-t/2,hh],[-t/2,-hh+t],[-hw,-hh+t]];
+  }
+  function polyU(w,h,t){
+    const hw=w/2, hh=h/2;
+    return [[-hw,-hh],[-hw+t,-hh],[-hw+t,hh-t],[hw-t,hh-t],[hw-t,-hh],[hw,-hh],[hw,hh],[-hw,hh]];
+  }
+  function polyPlus(a,t){
+    const h=a, o=t/2;
+    return [[-o,-h],[o,-h],[o,-o],[h,-o],[h,o],[o,o],[o,h],[-o,h],[-o,o],[-h,o],[-h,-o],[-o,-o]];
+  }
+  function hex(r){
+    const p=[]; for(let i=0;i<6;i++){ const a=-Math.PI/2+i*Math.PI/3; p.push([Math.cos(a)*r,Math.sin(a)*r]); }
+    return p;
+  }
+  function xform(pts,x,y,rot){
+    const c=Math.cos(rot||0), s=Math.sin(rot||0);
+    return pts.map(([px,py])=>[px*c-py*s+x, px*s+py*c+y]);
+  }
+  function pip(x,y,poly){
+    let c=false;
+    for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+      const xi=poly[i][0], yi=poly[i][1], xj=poly[j][0], yj=poly[j][1];
+      if(((yi>y)!==(yj>y)) && (x<(xj-xi)*(y-yi)/(yj-yi+1e-9)+xi)) c=!c;
+    }
+    return c;
+  }
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function ease(t){ return 1-Math.pow(1-t,3); }
+
+  function makeShape(def){
+    if(def[0]==='rect') return rect(def[1],def[2]);
+    if(def[0]==='l') return polyL(def[1],def[2],def[3], !!def[4]);
+    if(def[0]==='star') return star(def[1], def[2]);
+    if(def[0]==='t') return polyT(def[1],def[2],def[3]);
+    if(def[0]==='u') return polyU(def[1],def[2],def[3]);
+    if(def[0]==='plus') return polyPlus(def[1],def[2]);
+    if(def[0]==='hex') return hex(def[1]);
+    return rect(80,80);
+  }
+
+  /* boards: {s, x,y,r,col,z, sc:[[lx,ly,color],...] }  queue: color names */
+  const LEVELS = [
+    { // 1 very easy, two separate boards
+      slots:2, items:{add:1,clear:1,melt:0,unlock:0},
+      queue:['green','brown'],
+      boards:[
+        {s:['rect',168,100], x:130,y:340,r:-0.12, col:'#FFE56A', z:1, sc:[[-52,-24,'green'],[52,-24,'green'],[0,26,'green']]},
+        {s:['rect',160,100], x:258,y:460,r:0.16, col:'#7FE0F0', z:0, sc:[[-48,-24,'brown'],[48,-24,'brown'],[0,26,'brown']]}
+      ]
+    },
+    { // 2 stacked: must clear green first
+      slots:2, items:{add:1,clear:1,melt:0,unlock:0},
+      queue:['green','brown','purple'],
+      boards:[
+        {s:['rect',210,86], x:195,y:300,r:0, col:'#FFE56A', z:2, sc:[[-72,0,'green'],[0,0,'green'],[72,0,'green']]},
+        {s:['l',170,150,68,false], x:145,y:400,r:0, col:'#FFB0D0', z:1, sc:[[-50,-40,'brown'],[40,-40,'brown'],[-50,40,'brown']]},
+        {s:['rect',150,96], x:255,y:500,r:0.1, col:'#C0EC70', z:0, sc:[[-46,-22,'purple'],[46,-22,'purple'],[0,26,'purple']]}
+      ]
+    },
+    { // 3 L + bar, two colors open
+      slots:2, items:{add:1,clear:1,melt:0,unlock:0},
+      queue:['green','brown','yellow','purple'],
+      boards:[
+        {s:['l',180,160,70,true], x:250,y:320,r:-0.2, col:'#7FE0F0', z:3, sc:[[50,-45,'green'],[-40,-45,'green'],[55,40,'green']]},
+        {s:['rect',180,90], x:140,y:430,r:0.15, col:'#FFB0D0', z:2, sc:[[-55,0,'brown'],[0,0,'brown'],[55,0,'brown']]},
+        {s:['l',160,150,66,false], x:250,y:500,r:0.3, col:'#FFE56A', z:1, sc:[[-45,-40,'yellow'],[40,-40,'yellow'],[-45,40,'yellow']]},
+        {s:['hex',72], x:110,y:540,r:0, col:'#D0B8F0', z:0, sc:[[-28,-16,'purple'],[28,-16,'purple'],[0,28,'purple']]}
+      ]
+    },
+    { // 4 first star
+      slots:2, items:{add:1,clear:1,melt:0,unlock:1},
+      queue:['green','brown','purple','yellow','pink'],
+      boards:[
+        {s:['star',86], x:195,y:360,r:0, col:'#FFB0D0', z:4, sc:[[0,-36,'green'],[34,12,'green'],[-34,12,'green']]},
+        {s:['l',170,150,66,false], x:120,y:300,r:-0.4, col:'#7FE0F0', z:3, sc:[[-48,-40,'brown'],[36,-40,'brown'],[-48,40,'brown']]},
+        {s:['l',170,150,66,true], x:275,y:300,r:0.4, col:'#C0EC70', z:2, sc:[[48,-40,'purple'],[-36,-40,'purple'],[48,40,'purple']]},
+        {s:['rect',200,86], x:195,y:500,r:0, col:'#FFE56A', z:1, sc:[[-70,0,'yellow'],[0,0,'yellow'],[70,0,'yellow']]},
+        {s:['hex',70], x:195,y:548,r:0.2, col:'#FFC8A0', z:0, sc:[[-26,-16,'pink'],[26,-16,'pink'],[0,26,'pink']]}
+      ]
+    },
+    { // 5 two green boxes, layered greens
+      slots:2, items:{add:1,clear:1,melt:0,unlock:1},
+      queue:['green','brown','green','yellow','purple'],
+      boards:[
+        {s:['rect',200,80], x:195,y:280,r:0, col:'#FFE56A', z:4, sc:[[-70,0,'green'],[0,0,'green'],[70,0,'green']]},
+        {s:['t',190,140,64], x:195,y:390,r:0, col:'#FFB0D0', z:3, sc:[[-60,-40,'brown'],[60,-40,'brown'],[0,40,'brown']]},
+        {s:['u',180,130,56], x:195,y:500,r:0, col:'#7FE0F0', z:2, sc:[[-62,-30,'green'],[62,-30,'green'],[0,36,'green']]},
+        {s:['l',160,140,64,false], x:115,y:548,r:0.15, col:'#C0EC70', z:1, sc:[[-44,-34,'yellow'],[34,-34,'yellow'],[-44,36,'yellow']]},
+        {s:['l',160,140,64,true], x:275,y:548,r:-0.15, col:'#D0B8F0', z:0, sc:[[44,-34,'purple'],[-34,-34,'purple'],[44,36,'purple']]}
+      ]
+    },
+    { // 6 first glass over yellow
+      slots:2, items:{add:1,clear:1,melt:1,unlock:1},
+      queue:['green','brown','yellow','purple'],
+      boards:[
+        {s:['plus',80,56], x:195,y:310,r:0.2, col:'#7FE0F0', z:3, sc:[[0,-50,'green'],[-50,0,'green'],[50,0,'green']]},
+        {s:['rect',170,90], x:130,y:430,r:-0.1, col:'#FFB0D0', z:2, sc:[[-50,0,'brown'],[0,0,'brown'],[50,0,'brown']]},
+        {s:['rect',160,90], x:255,y:430,r:0.1, col:'#FFE56A', z:1, sc:[[-46,0,'yellow'],[0,0,'yellow'],[46,0,'yellow']]},
+        {s:['hex',78], x:195,y:545,r:0, col:'#D0B8F0', z:0, sc:[[-30,-16,'purple'],[30,-16,'purple'],[0,30,'purple']]}
+      ],
+      glass:[{s:['rect',150,80], x:255,y:430,r:0.1}]
+    },
+    { // 7 star + two L, 5 colors, glass
+      slots:2, items:{add:2,clear:1,melt:1,unlock:1},
+      queue:['green','brown','purple','yellow','pink','blue'],
+      boards:[
+        {s:['star',80], x:195,y:355,r:-0.1, col:'#FFB0D0', z:5, sc:[[0,-34,'green'],[32,12,'green'],[-32,12,'green']]},
+        {s:['l',180,160,68,false], x:115,y:320,r:-0.35, col:'#7FE0F0', z:4, sc:[[-52,-42,'brown'],[40,-42,'brown'],[-52,42,'brown']]},
+        {s:['l',180,160,68,true], x:275,y:320,r:0.35, col:'#C0EC70', z:3, sc:[[52,-42,'purple'],[-40,-42,'purple'],[52,42,'purple']]},
+        {s:['rect',210,84], x:195,y:490,r:0, col:'#FFE56A', z:2, sc:[[-72,0,'yellow'],[0,0,'yellow'],[72,0,'yellow']]},
+        {s:['hex',68], x:115,y:548,r:0, col:'#FFC8A0', z:1, sc:[[-24,-14,'pink'],[24,-14,'pink'],[0,24,'pink']]},
+        {s:['hex',68], x:275,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-24,-14,'blue'],[24,-14,'blue'],[0,24,'blue']]}
+      ],
+      glass:[{s:['rect',130,70], x:195,y:490,r:0}]
+    },
+    { // 8 six colors, plus and U
+      slots:2, items:{add:2,clear:2,melt:1,unlock:1},
+      queue:['green','brown','yellow','purple','pink','blue','orange'],
+      boards:[
+        {s:['plus',88,58], x:195,y:300,r:0, col:'#FFE56A', z:5, sc:[[0,-56,'green'],[0,56,'green'],[-56,0,'green']]},
+        {s:['t',200,140,62], x:195,y:400,r:3.1416, col:'#FFB0D0', z:4, sc:[[-60,-40,'brown'],[60,-40,'brown'],[0,40,'brown']]},
+        {s:['u',200,140,58], x:195,y:510,r:0, col:'#7FE0F0', z:3, sc:[[-70,-30,'yellow'],[70,-30,'yellow'],[0,42,'yellow']]},
+        {s:['l',150,130,60,false], x:100,y:300,r:0.5, col:'#C0EC70', z:2, sc:[[-40,-32,'purple'],[30,-32,'purple'],[-40,32,'purple']]},
+        {s:['l',150,130,60,true], x:290,y:300,r:-0.5, col:'#FFC8A0', z:1, sc:[[40,-32,'pink'],[-30,-32,'pink'],[40,32,'pink']]},
+        {s:['rect',160,80], x:120,y:548,r:-0.08, col:'#D0B8F0', z:0, sc:[[-48,0,'blue'],[0,0,'blue'],[48,0,'blue']]},
+        {s:['rect',160,80], x:270,y:548,r:0.08, col:'#C0EC70', z:0, sc:[[-48,0,'orange'],[0,0,'orange'],[48,0,'orange']]}
+      ],
+      glass:[{s:['rect',140,70], x:195,y:510,r:0}]
+    },
+    { // 9 closer to the screenshot layout but smaller
+      slots:2, items:{add:2,clear:2,melt:1,unlock:1},
+      queue:['green','brown','purple','yellow','pink','blue'],
+      boards:[
+        {s:['l',190,170,72,true], x:125,y:330,r:-0.55, col:'#7FE0F0', z:5, sc:[[-55,-48,'green'],[50,-48,'green'],[55,50,'green']]},
+        {s:['star',90], x:195,y:410,r:0.15, col:'#FFB0D0', z:4, sc:[[0,-38,'brown'],[36,14,'brown'],[-36,14,'brown']]},
+        {s:['l',190,170,72,false], x:265,y:330,r:0.55, col:'#C0EC70', z:3, sc:[[55,-48,'purple'],[-50,-48,'purple'],[-55,50,'purple']]},
+        {s:['l',180,150,68,false], x:125,y:520,r:0.2, col:'#FFE56A', z:2, sc:[[-50,-38,'yellow'],[40,-38,'yellow'],[-50,42,'yellow']]},
+        {s:['l',180,150,68,true], x:265,y:520,r:-0.2, col:'#7FE0F0', z:1, sc:[[50,-38,'pink'],[-40,-38,'pink'],[50,42,'pink']]},
+        {s:['hex',72], x:195,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-28,-16,'blue'],[28,-16,'blue'],[0,28,'blue']]}
+      ],
+      glass:[{s:['hex',78], x:195,y:548,r:0}]
+    },
+    { // 10 hardest here, still far simpler than 87
+      slots:2, items:{add:2,clear:2,melt:1,unlock:1},
+      queue:['green','brown','purple','yellow','pink','blue','orange','green'],
+      boards:[
+        {s:['star',84], x:195,y:350,r:0, col:'#FFB0D0', z:6, sc:[[0,-24,'green'],[22,8,'green'],[-22,8,'green']]},
+        {s:['plus',78,54], x:195,y:350,r:0.4, col:'#FFE56A', z:5, sc:[[0,-50,'brown'],[50,0,'brown'],[0,50,'brown']]},
+        {s:['l',180,160,68,false], x:110,y:300,r:-0.3, col:'#7FE0F0', z:4, sc:[[-50,-42,'purple'],[40,-42,'purple'],[-50,42,'purple']]},
+        {s:['l',180,160,68,true], x:280,y:300,r:0.3, col:'#C0EC70', z:3, sc:[[50,-42,'yellow'],[-40,-42,'yellow'],[50,42,'yellow']]},
+        {s:['t',200,130,60], x:195,y:500,r:0, col:'#FFC8A0', z:2, sc:[[-64,-34,'pink'],[64,-34,'pink'],[0,36,'pink']]},
+        {s:['u',190,120,52], x:195,y:548,r:0, col:'#D0B8F0', z:1, sc:[[-64,-28,'blue'],[64,-28,'blue'],[0,34,'blue']]},
+        {s:['hex',64], x:95,y:548,r:0, col:'#7FE0F0', z:0, sc:[[-22,-12,'orange'],[22,-12,'orange'],[0,22,'orange']]},
+        {s:['hex',64], x:295,y:548,r:0, col:'#FFE56A', z:0, sc:[[-22,-12,'green'],[22,-12,'green'],[0,22,'green']]}
+      ],
+      glass:[
+        {s:['rect',170,70], x:195,y:500,r:0},
+        {s:['rect',170,60], x:195,y:548,r:0}
+      ]
+    }
+  ];
+
+  let best=+(store.get('screwPuzzleBest')||0);
+  let nextLevel=Math.min(LEVELS.length, Math.max(1, +(store.get('screwPuzzleNext')||1)));
+
+  let mode='home';
+  let levelIdx=0;
+  let boards=[], screws=[], glass=[], queue=[], slots=[];
+  let slotCount=2, maxShow=4;
+  let items={add:0,clear:0,melt:0,unlock:0};
+  let glassMelted=false;
+  let armed=null;
+  let flies=[], falls=[], sparks=[];
+  let toastT=0, toastMsg='';
+  let last=0, idleT=0, winPending=false;
+
+  function worldBoard(b){ return xform(b.poly, b.x, b.y, b.r); }
+
+  function screwBlocked(s){
+    if(s.removed) return true;
+    for(const b of boards){
+      if(b.removed || b.z<=s.z) continue;
+      if(pip(s.x, s.y, worldBoard(b))) return true;
+    }
+    if(!glassMelted){
+      for(const g of glass){
+        if(pip(s.x, s.y, g.poly)) return true;
+      }
+    }
+    return false;
+  }
+
+  function toast(m){
+    toastMsg=m; toastT=1.4;
+    const el=$('toast'); el.textContent=m; el.classList.add('show');
+  }
+
+  function layoutSlots(){
+    const n=maxShow;
+    const gap=88, total=n*gap, x0=(W-total)/2+gap/2;
+    return Array.from({length:n},(_,i)=>({x:x0+i*gap, y:108}));
+  }
+
+  function syncItems(){
+    const map=[['add','uAdd','itAdd'],['clear','uClear','itClear'],['melt','uMelt','itMelt']];
+    map.forEach(([k,uid,bid])=>{
+      $(uid).textContent=items[k];
+      $(bid).classList.toggle('off', items[k]<=0);
+      $(bid).classList.toggle('armed', armed===k);
+    });
+  }
+
+  function progress(){
+    const tot=screws.length, done=screws.filter(s=>s.removed).length;
+    return tot? Math.round(done/tot*100):0;
+  }
+
+  function refreshHud(){
+    $('levelTag').textContent='第'+(levelIdx+1)+'关';
+    $('prog').textContent=progress()+'%';
+    syncItems();
+  }
+
+  function buildLevel(i){
+    const L=LEVELS[i];
+    boards=L.boards.map((b,bi)=>{
+      const poly=makeShape(b.s);
+      return { id:bi, poly, x:b.x, y:b.y, r:b.r||0, col:b.col, z:b.z, removed:false, fall:0 };
+    });
+    screws=[];
+    L.boards.forEach((b,bi)=>{
+      const c=Math.cos(b.r||0), s=Math.sin(b.r||0);
+      b.sc.forEach((sc,si)=>{
+        const lx=sc[0], ly=sc[1];
+        screws.push({
+          id:screws.length, bid:bi, z:b.z,
+          x:lx*c-ly*s+b.x, y:lx*s+ly*c+b.y,
+          color:sc[2], removed:false
+        });
+      });
+    });
+    glass=(L.glass||[]).map(g=>({ poly:xform(makeShape(g.s), g.x, g.y, g.r||0) }));
+    glassMelted=false;
+    queue=L.queue.map(c=>({color:c, cap:3, fill:[]}));
+    slotCount=L.slots||2;
+    items={add:L.items.add, clear:L.items.clear, melt:L.items.melt, unlock:L.items.unlock};
+    armed=null;
+    const pos=layoutSlots();
+    slots=pos.map((p,i)=>({ x:p.x, y:p.y, box: i<slotCount && queue.length? queue.shift(): null, locked:i>=slotCount }));
+    flies=[]; falls=[]; sparks=[]; winPending=false;
+    refreshHud();
+  }
+
+  function currentBoxes(){ return slots.filter(s=>s.box); }
+
+  function findBoxFor(color){
+    return slots.find(s=>s.box && s.box.color===color && s.box.fill.length<s.box.cap);
+  }
+
+  function holePos(slot, index, cap){
+    const cx=slot.x, cy=slot.y+8;
+    if(cap<=3){
+      const pts=[[-16,-6],[16,-6],[0,14]];
+      return {x:cx+pts[index][0], y:cy+pts[index][1]};
+    }
+    const a=-Math.PI/2 + index*(Math.PI*2/cap);
+    return {x:cx+Math.cos(a)*16, y:cy+Math.sin(a)*14};
+  }
+
+  function maybeDropBoards(){
+    boards.forEach(b=>{
+      if(b.removed) return;
+      const left=screws.some(s=>s.bid===b.id && !s.removed);
+      if(!left){
+        b.removed=true;
+        falls.push({b, t:0});
+      }
+    });
+  }
+
+  function advanceFullBoxes(){
+    slots.forEach(s=>{
+      if(s.box && s.box.fill.length>=s.box.cap && !s.box.leaving){
+        s.box.leaving=true;
+        s.box.leaveT=0;
+      }
+    });
+  }
+
+  function tickLeaving(dt){
+    slots.forEach(s=>{
+      if(s.box && s.box.leaving){
+        s.box.leaveT+=(dt||0.016);
+        if(s.box.leaveT>0.35){
+          s.box= queue.length? queue.shift(): null;
+        }
+      }
+    });
+  }
+
+  function checkWin(){
+    if(winPending) return;
+    if(screws.every(s=>s.removed) && boards.every(b=>b.removed) && flies.length===0){
+      winPending=true;
+      setTimeout(onLevelWin, 350);
+    }
+  }
+
+  function saveProgress(completedIdx){
+    const completed=completedIdx+1;
+    if(completed>best){ best=completed; store.set('screwPuzzleBest', String(best)); }
+    const nxt=Math.min(LEVELS.length, completed+1);
+    store.set('screwPuzzleNext', String(nxt));
+    nextLevel=nxt;
+  }
+
+  function onLevelWin(){
+    saveProgress(levelIdx);
+    mode='clear';
+    $('playUi').classList.add('hidden');
+    $('pauseMenu').classList.add('hidden');
+    const lastL=levelIdx>=LEVELS.length-1;
+    $('title').textContent= lastL? '全部通关':'过关！';
+    $('msg').hidden=true;
+    $('endStats').hidden=false;
+    $('endStats').innerHTML= lastL
+      ? ('恭喜清完所有关卡<br>已完成 <b>'+LEVELS.length+'</b> 关')
+      : ('第 <b>'+(levelIdx+1)+'</b> 关完成<br>最高到达第 <b>'+best+'</b> 关');
+    $('start').textContent= lastL? '再来一次':'下一关';
+    $('overlay').classList.remove('hidden');
+  }
+
+  function showHome(){
+    mode='home';
+    $('playUi').classList.add('hidden');
+    $('pauseMenu').classList.add('hidden');
+    $('title').textContent='拧螺丝解谜';
+    $('msg').hidden=false;
+    $('msg').textContent='点螺丝拧出，放进同色盒子；清掉全部板子就过关';
+    $('endStats').hidden=false;
+    $('endStats').innerHTML= best? ('最高到达第 <b>'+best+'</b> 关'): '';
+    if(!best) $('endStats').hidden=true;
+    $('start').textContent='开始游戏';
+    $('overlay').classList.remove('hidden');
+    // preview first level quietly
+    buildLevel(0);
+    // don't consume saved next
+  }
+
+  function startPlay(idx){
+    levelIdx=idx;
+    buildLevel(idx);
+    mode='play';
+    $('overlay').classList.add('hidden');
+    $('pauseMenu').classList.add('hidden');
+    $('playUi').classList.remove('hidden');
+    refreshHud();
+  }
+
+  function unscrew(s){
+    if(s.removed || screwBlocked(s) || mode!=='play') return false;
+    const slot=findBoxFor(s.color);
+    if(!slot){
+      toast('没有同色的空位');
+      s.shake=1;
+      return false;
+    }
+    s.removed=true;
+    const idx=slot.box.fill.length;
+    const hp=holePos(slot, idx, slot.box.cap);
+    slot.box.fill.push({color:s.color, incoming:true});
+    flies.push({ color:s.color, x:s.x, y:s.y, x0:s.x, y0:s.y, x1:hp.x, y1:hp.y, t:0, slot:slot, fi:idx });
+    maybeDropBoards();
+    refreshHud();
+    return true;
+  }
+
+  function finishFly(f){
+    if(f.slot.box && f.slot.box.fill[f.fi]) f.slot.box.fill[f.fi].incoming=false;
+    advanceFullBoxes();
+    checkWin();
+  }
+
+  function onCanvasTap(x,y){
+    if(mode!=='play') return;
+    if(armed==='add' || armed==='clear'){
+      const hit=slots.find(s=>s.box && Math.hypot(x-s.x,y-(s.y+4))<40);
+      if(hit){
+        if(armed==='add' && items.add>0){
+          hit.box.cap+=1; items.add--; armed=null; toast('孔位 +1'); syncItems(); return;
+        }
+        if(armed==='clear' && items.clear>0){
+          hit.box.fill=[]; items.clear--; armed=null; toast('已清空盒子');
+          // after clear, if was leaving no; just empty
+          syncItems(); return;
+        }
+      } else {
+        armed=null; syncItems();
+      }
+    }
+    if(armed==='unlock' || true){
+      const locked=slots.find(s=>s.locked && Math.hypot(x-s.x,y-(s.y+4))<40);
+      if(locked && items.unlock>0){
+        locked.locked=false;
+        slotCount++;
+        if(!locked.box && queue.length) locked.box=queue.shift();
+        items.unlock--; toast('解锁了一个盒子'); syncItems(); return;
+      }
+    }
+    let bestS=null, bestD=1e9;
+    screws.forEach(s=>{
+      if(s.removed) return;
+      const d=Math.hypot(x-s.x,y-s.y);
+      if(d<SR+10 && d<bestD){ bestD=d; bestS=s; }
+    });
+    if(bestS) unscrew(bestS);
+  }
+
+  function canvasPos(e){
+    const rect=cv.getBoundingClientRect();
+    const src=(e.touches&&e.touches[0])||(e.changedTouches&&e.changedTouches[0])||e;
+    return { x:(src.clientX-rect.left)*(W/rect.width), y:(src.clientY-rect.top)*(H/rect.height) };
+  }
+
+  /* ---------- solvability ---------- */
+  function snapshotSolvable(useItems){
+    const n=screws.length;
+    const boardZ=boards.map(b=>b.z);
+    const boardPoly=boards.map(b=>worldBoard(b));
+    const glassPolys=glass.map(g=>g.poly);
+    const screwData=screws.map(s=>({x:s.x,y:s.y,z:s.z,bid:s.bid,color:s.color}));
+    const colors=screwData.map(s=>s.color);
+    const initMask=(1<<n)-1;
+    const q0=queue.map(b=>({color:b.color,cap:b.cap,fill:b.fill.length}));
+    // include current slots boxes at front
+    const initialQueue=[];
+    slots.forEach(s=>{ if(s.box) initialQueue.push({color:s.box.color,cap:s.box.cap,fill:s.box.fill.length}); });
+    q0.forEach(b=>initialQueue.push({color:b.color,cap:b.cap,fill:b.fill}));
+    const startSlots=slotCount;
+    const startItems=useItems? {add:items.add,clear:items.clear,melt:items.melt,unlock:items.unlock}:{add:0,clear:0,melt:0,unlock:0};
+
+    function blocked(mask, melt, sid){
+      const s=screwData[sid];
+      for(let bi=0;bi<boards.length;bi++){
+        if(boardZ[bi]<=s.z) continue;
+        // board present if any of its screws remain
+        let alive=false;
+        for(let i=0;i<n;i++) if(screwData[i].bid===bi && (mask&(1<<i))) {alive=true;break;}
+        if(!alive) continue;
+        if(pip(s.x,s.y,boardPoly[bi])) return true;
+      }
+      if(!melt){
+        for(const g of glassPolys) if(pip(s.x,s.y,g)) return true;
+      }
+      return false;
+    }
+
+    const memo=new Map();
+    function key(mask, qHead, slotState, melt, sc, it){
+      return mask.toString(16)+'|'+qHead+'|'+slotState+'|'+melt+'|'+sc+'|'+it;
+    }
+    function packSlots(sl){
+      return sl.map(b=>b? (b.color+':'+b.fill+'/'+b.cap): '.').join(',');
+    }
+    function packIt(it){ return it.add+','+it.clear+','+it.melt+','+it.unlock; }
+
+    function fillSlots(qHead, slc, qAll){
+      const sl=[];
+      let h=qHead;
+      for(let i=0;i<slc;i++){
+        sl.push(h<qAll.length? Object.assign({}, qAll[h++]): null);
+      }
+      // this is wrong for mid-game because qHead isn't how slots work once some are partial
+      return sl;
+    }
+
+    // Better state: remaining mask, array of current slot boxes (color,cap,fill) length=slotCount, remaining queue array, melt, items
+    function cloneQ(q){ return q.map(b=>({color:b.color,cap:b.cap,fill:b.fill})); }
+
+    function rec(mask, sl, qrest, melt, it){
+      if(mask===0) return true;
+      const k=key(mask, qrest.map(b=>b.color+b.cap+b.fill).join(''), packSlots(sl), melt?1:0, sl.length, packIt(it));
+      if(memo.has(k)) return memo.get(k);
+      const legal=[];
+      for(let i=0;i<n;i++){
+        if(!(mask&(1<<i))) continue;
+        if(blocked(mask,melt,i)) continue;
+        const col=colors[i];
+        const si=sl.findIndex(b=>b && b.color===col && b.fill<b.cap);
+        if(si>=0) legal.push([i,si]);
+      }
+      function afterPlace(nmask, sl2, qr2){
+        // drop boards already handled via blocked()
+        sl2=sl2.map(b=>b? Object.assign({},b):null);
+        qr2=cloneQ(qr2);
+        for(let i=0;i<sl2.length;i++){
+          if(sl2[i] && sl2[i].fill>=sl2[i].cap){
+            sl2[i]= qr2.length? qr2.shift(): null;
+          }
+        }
+        return rec(nmask, sl2, qr2, melt, it);
+      }
+      for(const [sid,si] of legal){
+        const sl2=sl.map(b=>b? Object.assign({},b):null);
+        sl2[si].fill++;
+        if(afterPlace(mask^(1<<sid), sl2, qrest)) { memo.set(k,true); return true; }
+      }
+      if(it.melt>0 && !melt && glassPolys.length){
+        const it2=Object.assign({},it,{melt:it.melt-1});
+        if(rec(mask, sl.map(b=>b&&Object.assign({},b)), cloneQ(qrest), true, it2)){ memo.set(k,true); return true; }
+      }
+      if(it.unlock>0 && sl.length<4){
+        const it2=Object.assign({},it,{unlock:it.unlock-1});
+        const sl2=sl.map(b=>b&&Object.assign({},b));
+        const qr2=cloneQ(qrest);
+        sl2.push(qr2.length? qr2.shift(): null);
+        if(rec(mask, sl2, qr2, melt, it2)){ memo.set(k,true); return true; }
+      }
+      if(it.add>0){
+        for(let i=0;i<sl.length;i++) if(sl[i]){
+          const it2=Object.assign({},it,{add:it.add-1});
+          const sl2=sl.map(b=>b&&Object.assign({},b));
+          sl2[i].cap++;
+          if(rec(mask, sl2, cloneQ(qrest), melt, it2)){ memo.set(k,true); return true; }
+        }
+      }
+      if(it.clear>0){
+        for(let i=0;i<sl.length;i++) if(sl[i] && sl[i].fill>0){
+          const it2=Object.assign({},it,{clear:it.clear-1});
+          const sl2=sl.map(b=>b&&Object.assign({},b));
+          sl2[i].fill=0;
+          if(rec(mask, sl2, cloneQ(qrest), melt, it2)){ memo.set(k,true); return true; }
+        }
+      }
+      memo.set(k,false);
+      return false;
+    }
+
+    const sl=[], qrest=cloneQ(initialQueue);
+    for(let i=0;i<startSlots;i++) sl.push(qrest.length? qrest.shift(): null);
+    return rec(initMask, sl, qrest, false, startItems);
+  }
+
+  function validateScrews(){
+    const bad=[];
+    screws.forEach(s=>{
+      const b=boards[s.bid];
+      if(!pip(s.x,s.y, worldBoard(b))) bad.push(s.id);
+    });
+    return bad;
+  }
+
+  /* ---------- draw ---------- */
+  function drawBg(){
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#f7fbff'); g.addColorStop(0.35,'#e7f5ff'); g.addColorStop(1,'#d4efff');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(255,255,255,.35)';
+    for(let i=0;i<6;i++){
+      ctx.beginPath();
+      ctx.ellipse(40+i*70, 200+((i*83)%200), 90, 40, 0.2, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  function roundPoly(poly, width, fill, stroke){
+    ctx.beginPath();
+    ctx.moveTo(poly[0][0], poly[0][1]);
+    for(let i=1;i<poly.length;i++) ctx.lineTo(poly[i][0], poly[i][1]);
+    ctx.closePath();
+    if(fill){ ctx.fillStyle=fill; ctx.fill(); }
+    if(stroke){
+      ctx.lineJoin='round'; ctx.lineCap='round';
+      ctx.lineWidth=width; ctx.strokeStyle=stroke; ctx.stroke();
+    }
+  }
+
+  function drawBoard(b){
+    if(b.removed && (!falls.some(f=>f.b===b) || (falls.find(f=>f.b===b)||{}).t>1)) return;
+    const fall=falls.find(f=>f.b===b);
+    ctx.save();
+    if(fall){
+      const t=ease(Math.min(1,fall.t));
+      ctx.translate(0, t*80);
+      ctx.rotate((b.id%2?1:-1)*t*0.2);
+      ctx.globalAlpha=1-t;
+    }
+    const poly=worldBoard(b);
+    ctx.save();
+    ctx.shadowColor='rgba(40,60,80,.22)'; ctx.shadowBlur=12; ctx.shadowOffsetY=5;
+    roundPoly(poly, 16, b.col, null);
+    ctx.restore();
+    roundPoly(poly, 14, null, '#fff');
+    // screw holes
+    screws.filter(s=>s.bid===b.id).forEach(s=>{
+      ctx.beginPath(); ctx.arc(s.x,s.y, SR-1, 0, Math.PI*2);
+      ctx.fillStyle='rgba(60,50,40,.2)'; ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  function drawScrewHead(x,y,color, ang, scale, shake){
+    ctx.save();
+    ctx.translate(x+(shake?Math.sin(idleT*40)*3:0), y);
+    ctx.rotate(ang||0); ctx.scale(scale||1, scale||1);
+    ctx.beginPath(); ctx.arc(1.5,2.5,SR,0,Math.PI*2);
+    ctx.fillStyle='rgba(0,0,0,.16)'; ctx.fill();
+    const g=ctx.createRadialGradient(-4,-4,2,0,0,SR);
+    g.addColorStop(0, SCREW_IN[color]||'#fff');
+    g.addColorStop(0.35, SCREW[color]);
+    g.addColorStop(1, SCREW[color]);
+    ctx.beginPath(); ctx.arc(0,0,SR,0,Math.PI*2);
+    ctx.fillStyle=g; ctx.fill();
+    ctx.lineWidth=3; ctx.strokeStyle='#fff'; ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,.85)';
+    ctx.lineWidth=3.4; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-7,0); ctx.lineTo(7,0);
+    ctx.moveTo(0,-7); ctx.lineTo(0,7); ctx.stroke();
+    ctx.strokeStyle='rgba(0,0,0,.15)'; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.moveTo(-7,0); ctx.lineTo(7,0);
+    ctx.moveTo(0,-7); ctx.lineTo(0,7); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawGlass(){
+    if(glassMelted) return;
+    glass.forEach(g=>{
+      ctx.save();
+      ctx.globalAlpha=0.38;
+      roundPoly(g.poly, 8, 'rgba(190,230,255,0.9)', 'rgba(255,255,255,0.9)');
+      ctx.globalAlpha=0.22;
+      ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+      const p=g.poly[0];
+      ctx.beginPath(); ctx.moveTo(p[0]+8,p[1]+6); ctx.lineTo(p[0]+28,p[1]+18); ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  function drawBox(slot){
+    const x=slot.x, y=slot.y;
+    ctx.save();
+    ctx.translate(x,y);
+    if(slot.box && slot.box.leaving){
+      ctx.translate(0, -slot.box.leaveT*60);
+      ctx.globalAlpha=1-Math.min(1,slot.box.leaveT/0.35);
+    }
+    if(slot.locked && !slot.box){
+      // mint locked
+      ctx.strokeStyle='#9ee0d8'; ctx.lineWidth=4; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(-14,-46); ctx.quadraticCurveTo(0,-62,14,-46); ctx.stroke();
+      roundRectPath(-34,-42,68,70,14);
+      ctx.fillStyle='#b6f0ea'; ctx.fill();
+      ctx.lineWidth=4; ctx.strokeStyle='#7fd5cc'; ctx.stroke();
+      ctx.fillStyle='#1fa89a';
+      ctx.font='bold 12px system-ui,-apple-system,sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText('解锁',0,-2);
+      ctx.fillText('盒子',0,14);
+      ctx.restore();
+      return;
+    }
+    if(!slot.box){ ctx.restore(); return; }
+    const col=SCREW[slot.box.color];
+    ctx.strokeStyle=col; ctx.lineWidth=5; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-14,-46); ctx.quadraticCurveTo(0,-62,14,-46); ctx.stroke();
+    roundRectPath(-36,-42,72,74,16);
+    ctx.fillStyle=col; ctx.fill();
+    ctx.lineWidth=4; ctx.strokeStyle='#fff'; ctx.stroke();
+    // holes
+    const cap=slot.box.cap;
+    for(let i=0;i<cap;i++){
+      const hp=holePos({x:0,y:8}, i, cap);
+      ctx.beginPath(); ctx.arc(hp.x, hp.y-8, 9, 0, Math.PI*2);
+      ctx.fillStyle='rgba(0,0,0,.22)'; ctx.fill();
+      const f=slot.box.fill[i];
+      if(f && !f.incoming){
+        drawScrewHead(hp.x, hp.y-8, f.color, 0, 0.55, 0);
+      }
+    }
+    ctx.restore();
+  }
+
+  function roundRectPath(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  function drawQueueDots(){
+    const left=queue.length;
+    const n=left+1;
+    const x0=W/2-(n-1)*9;
+    ctx.save();
+    for(let i=0;i<Math.min(8, n+2);i++){
+      ctx.beginPath(); ctx.arc(x0+i*18, 164, 4, 0, Math.PI*2);
+      ctx.fillStyle=i<1? '#8aa0b5':'#d3deea';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function draw(){
+    drawBg();
+    // boxes area
+    slots.forEach(drawBox);
+    drawQueueDots();
+    const order=boards.slice().sort((a,b)=>a.z-b.z);
+    order.forEach(drawBoard);
+    drawGlass();
+    screws.forEach(s=>{
+      if(s.removed) return;
+      if(screwBlocked(s)) return;
+      drawScrewHead(s.x,s.y,s.color,0,1,s.shake);
+    });
+    flies.forEach(f=>{
+      const t=ease(Math.min(1,f.t));
+      const x=lerp(f.x0,f.x1,t);
+      const y=lerp(f.y0,f.y1,t) - Math.sin(t*Math.PI)*70;
+      drawScrewHead(x,y,f.color, t*Math.PI*2, 1-t*0.4, 0);
+    });
+    sparks.forEach(p=>{
+      ctx.globalAlpha=1-p.t/p.life;
+      ctx.fillStyle=p.col;
+      ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+    });
+  }
+
+  function update(dt){
+    idleT+=dt;
+    if(toastT>0){
+      toastT-=dt;
+      if(toastT<=0) $('toast').classList.remove('show');
+    }
+    screws.forEach(s=>{ if(s.shake) s.shake=Math.max(0,s.shake-dt*2); });
+    flies.forEach(f=>f.t+=dt*2.4);
+    flies.filter(f=>f.t>=1).forEach(finishFly);
+    flies=flies.filter(f=>f.t<1);
+    falls.forEach(f=>f.t+=dt*1.6);
+    falls=falls.filter(f=>f.t<1.05);
+    tickLeaving(dt);
+    sparks.forEach(p=>{ p.t+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; });
+    sparks=sparks.filter(p=>p.t<p.life);
+    if(mode==='play') checkWin();
+  }
+
+  function loop(now){
+    if(!last) last=now;
+    const dt=Math.min(0.05,(now-last)/1000);
+    last=now;
+    update(dt); draw();
+    requestAnimationFrame(loop);
+  }
+
+  /* ---------- events ---------- */
+  function onPtr(e){
+    if(e&&e.cancelable) e.preventDefault();
+    if(mode!=='play') return;
+    const p=canvasPos(e);
+    onCanvasTap(p.x,p.y);
+  }
+  if(window.PointerEvent){
+    cv.addEventListener('pointerdown', onPtr, {passive:false});
+  } else {
+    cv.addEventListener('touchstart', onPtr, {passive:false});
+    cv.addEventListener('mousedown', onPtr);
+  }
+  document.addEventListener('contextmenu', e=>e.preventDefault());
+
+  $('start').addEventListener('click', e=>{
+    e.preventDefault(); e.stopPropagation();
+    const txt=$('start').textContent;
+    if(txt==='下一关') startPlay(levelIdx+1);
+    else if(txt==='再来一次'){ nextLevel=1; store.set('screwPuzzleNext','1'); startPlay(0); }
+    else startPlay(Math.max(0, Math.min(LEVELS.length-1, nextLevel-1)));
+  });
+  $('start').addEventListener('touchend', e=>{ e.preventDefault(); $('start').click(); }, {passive:false});
+
+  $('pauseBtn').addEventListener('click', ()=>{
+    if(mode!=='play') return;
+    mode='pause';
+    $('pauseMenu').classList.remove('hidden');
+  });
+  $('resume').addEventListener('click', ()=>{
+    mode='play'; $('pauseMenu').classList.add('hidden');
+  });
+  $('restart').addEventListener('click', ()=>{
+    $('pauseMenu').classList.add('hidden'); startPlay(levelIdx);
+  });
+  $('home').addEventListener('click', ()=>{
+    $('pauseMenu').classList.add('hidden'); showHome();
+  });
+
+  $('itAdd').addEventListener('click', ()=>{
+    if(mode!=='play' || items.add<=0) return;
+    armed = armed==='add'? null:'add'; syncItems();
+    if(armed==='add') toast('点一个盒子加孔');
+  });
+  $('itClear').addEventListener('click', ()=>{
+    if(mode!=='play' || items.clear<=0) return;
+    armed = armed==='clear'? null:'clear'; syncItems();
+    if(armed==='clear') toast('点一个盒子清空');
+  });
+  $('itMelt').addEventListener('click', ()=>{
+    if(mode!=='play' || items.melt<=0) return;
+    if(glassMelted || !glass.length){ toast('这一关没有玻璃'); return; }
+    glassMelted=true; items.melt--; syncItems(); toast('玻璃已融化');
+  });
+
+  showHome();
+  last=performance.now();
+  requestAnimationFrame(loop);
+
+  window.__puzzle = {
+    start: ()=>startPlay(0),
+    startLevel: (n)=>startPlay(n),
+    get state(){
+      return {
+        mode, level: levelIdx+1, progress: progress(),
+        remaining: screws.filter(s=>!s.removed).length,
+        visible: screws.filter(s=>!s.removed && !screwBlocked(s)).length,
+        boxes: slots.filter(s=>s.box).map(s=>({color:s.box.color, fill:s.box.fill.length, cap:s.box.cap})),
+        title: $('title').textContent, button: $('start').textContent,
+        startVisible: $('start').offsetParent!==null && !$('overlay').classList.contains('hidden'),
+        msg: $('msg').textContent, best
+      };
+    },
+    clickLegal(){
+      const s=screws.find(s=>!s.removed && !screwBlocked(s) && findBoxFor(s.color));
+      if(!s) return false;
+      return unscrew(s);
+    },
+    legalCount(){
+      return screws.filter(s=>!s.removed && !screwBlocked(s) && findBoxFor(s.color)).length;
+    },
+    validate: validateScrews,
+    solvable(useItems){ return snapshotSolvable(!!useItems); },
+    levels: LEVELS.length
+  };
+})();
+</script>
+</body>
+</html>
