@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="format-detection" content="telephone=no">
 <title>拧螺丝解谜</title>
+<!-- UX_PASS=clip-dim-hud -->
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{
@@ -19,9 +20,9 @@ html,body{
 canvas{display:block;border-radius:16px;box-shadow:0 8px 28px rgba(40,80,120,.18)}
 #overlay,#pauseMenu{
   position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:rgba(180,214,235,.28);border-radius:16px;gap:0;text-align:center;padding:20px 16px;z-index:5;
+  background:rgba(186,220,238,.94);border-radius:16px;gap:0;text-align:center;padding:20px 16px;z-index:5;
 }
-#pauseMenu{background:rgba(20,40,60,.45);gap:14px}
+#pauseMenu{background:rgba(16,32,48,.82);gap:14px}
 #card{
   background:rgba(255,255,255,.94);border-radius:22px;padding:22px 18px 20px;width:min(300px,86%);
   box-shadow:0 10px 30px rgba(40,80,120,.18);display:flex;flex-direction:column;align-items:center;gap:12px;
@@ -57,7 +58,7 @@ button.ghost{
   background:#2b3340;color:#fff;border-radius:999px;padding:6px 16px;font-size:14px;font-weight:800;
 }
 #progTag{
-  position:absolute;right:12px;top:168px;background:rgba(255,255,255,.9);border-radius:12px;
+  position:absolute;right:12px;top:26.857%;background:rgba(255,255,255,.9);border-radius:12px;
   padding:6px 8px 6px 8px;font-size:11px;font-weight:800;color:#5a6573;text-align:center;line-height:1.3;
   box-shadow:0 2px 8px rgba(0,0,0,.08);min-width:52px;
 }
@@ -231,7 +232,21 @@ button.ghost{
   const SCREW_EDGE=3;    // screw-head stroke + a little margin
   const BLOCK_R=SR+SCREW_EDGE+BOARD_STROKE;
   const GLASS_R=SR+SCREW_EDGE+GLASS_STROKE;
-  const HOLD_Y=178, HOLD_GAP=38, HOLD_R=15, HOLD_MAX=5, HOLD_START=3;
+  const BOX_Y=140;
+  const HOLD_Y=208, HOLD_GAP=38, HOLD_R=15, HOLD_MAX=5, HOLD_START=3;
+  const QUEUE_DOT_Y=244;
+  const BOARD_STROKE_PAD=14;
+  const ITEM_BAR_TOP=H-8-70;
+  const PLAY_GAP=14;
+  function playSafeRect(){
+    const holdBottom=HOLD_Y+20;
+    const progBottom=(HOLD_Y-20)+56;
+    const dotsBottom=QUEUE_DOT_Y+5;
+    const top=Math.max(holdBottom, progBottom, dotsBottom)+PLAY_GAP;
+    const bottom=ITEM_BAR_TOP-6-PLAY_GAP;
+    const padX=4;
+    return {x:padX, y:top, w:W-padX*2, h:bottom-top};
+  }
   function lerp(a,b,t){ return a+(b-a)*t; }
   function ease(t){ return 1-Math.pow(1-t,3); }
   function hexRgba(h,a){
@@ -489,6 +504,7 @@ button.ghost{
     }
     if(!glassMelted){
       for(const g of glass){
+        if(s.z>=g.z) continue;
         if(circleHitsPoly(s.x, s.y, GLASS_R, g.poly)) return true;
       }
     }
@@ -502,6 +518,7 @@ button.ghost{
     }
     if(!glassMelted){
       for(const g of glass){
+        if(z>=g.z) continue;
         if(circleHitsPoly(x, y, GLASS_STROKE, g.poly)) return true;
       }
     }
@@ -516,7 +533,7 @@ button.ghost{
   function layoutSlots(){
     const n=maxShow;
     const gap=88, total=n*gap, x0=(W-total)/2+gap/2;
-    return Array.from({length:n},(_,i)=>({x:x0+i*gap, y:108}));
+    return Array.from({length:n},(_,i)=>({x:x0+i*gap, y:BOX_Y}));
   }
   function holdLayout(){
     const n=holdCount, total=n*HOLD_GAP, x0=(W-total)/2+HOLD_GAP/2;
@@ -552,6 +569,71 @@ button.ghost{
     syncItems();
   }
 
+  function aabbAdd(bb,x,y,pad){
+    pad=pad||0;
+    bb.minX=Math.min(bb.minX, x-pad);
+    bb.minY=Math.min(bb.minY, y-pad);
+    bb.maxX=Math.max(bb.maxX, x+pad);
+    bb.maxY=Math.max(bb.maxY, y+pad);
+  }
+  function playBounds(){
+    const bb={minX:1e9,minY:1e9,maxX:-1e9,maxY:-1e9};
+    for(const b of boards){
+      worldBoard(b).forEach(pt=>aabbAdd(bb, pt[0], pt[1], BOARD_STROKE_PAD));
+    }
+    for(const s of screws){
+      if(s.removed) continue;
+      aabbAdd(bb, s.x, s.y, SR);
+    }
+    if(!glassMelted){
+      for(const g of glass){
+        g.poly.forEach(pt=>aabbAdd(bb, pt[0], pt[1], GLASS_STROKE*2));
+      }
+    }
+    if(bb.minX>bb.maxX) return {minX:0,minY:0,maxX:0,maxY:0,w:0,h:0,cx:0,cy:0};
+    return Object.assign(bb,{w:bb.maxX-bb.minX,h:bb.maxY-bb.minY,cx:(bb.minX+bb.maxX)/2,cy:(bb.minY+bb.maxY)/2});
+  }
+  let lastFit={scale:1,ox:0,oy:0,tx:0,ty:0,safe:null,before:null,after:null};
+  function fitPlayfield(){
+    const S=playSafeRect();
+    lastFit={scale:1,ox:0,oy:0,tx:0,ty:0,safe:S,before:Object.assign({},playBounds()),after:null};
+    // Stroke/head pads are in unscaled world pixels, so one shrink pass can
+    // still leave the padded AABB slightly outside. Iterate a few times.
+    for(let iter=0; iter<8; iter++){
+      const B=playBounds();
+      if(!B.w || !B.h){ lastFit.after=B; return; }
+      let scale=1, ox=B.cx, oy=B.cy, tx=B.cx, ty=B.cy;
+      const fits=B.w<=S.w+1e-6 && B.h<=S.h+1e-6;
+      if(fits){
+        let dx=0, dy=0;
+        if(B.minX<S.x) dx=S.x-B.minX;
+        else if(B.maxX>S.x+S.w) dx=(S.x+S.w)-B.maxX;
+        if(B.minY<S.y) dy=S.y-B.minY;
+        else if(B.maxY>S.y+S.h) dy=(S.y+S.h)-B.maxY;
+        if(Math.abs(dx)<1e-6 && Math.abs(dy)<1e-6){ lastFit.after=B; return; }
+        tx=ox+dx; ty=oy+dy;
+      } else {
+        scale=Math.min(S.w/B.w, S.h/B.h);
+        if(scale>0.9995) scale=0.9995;
+        tx=S.x+S.w/2; ty=S.y+S.h/2;
+      }
+      lastFit.scale*=scale; lastFit.ox=ox; lastFit.oy=oy; lastFit.tx=tx; lastFit.ty=ty;
+      function mapPt(x,y){ return [(x-ox)*scale+tx, (y-oy)*scale+ty]; }
+      boards.forEach(b=>{
+        const p=mapPt(b.x,b.y); b.x=p[0]; b.y=p[1];
+        if(scale!==1) b.poly=b.poly.map(([x,y])=>[x*scale,y*scale]);
+      });
+      screws.forEach(s=>{
+        const p=mapPt(s.x,s.y); s.x=p[0]; s.y=p[1];
+      });
+      glass.forEach(g=>{
+        const p=mapPt(g.x,g.y); g.x=p[0]; g.y=p[1];
+        g.poly=g.poly.map(([x,y])=>mapPt(x,y));
+      });
+    }
+    lastFit.after=playBounds();
+  }
+
   function buildLevel(i){
     const L=LEVELS[i];
     boards=L.boards.map((b,bi)=>{
@@ -570,8 +652,22 @@ button.ghost{
         });
       });
     });
-    glass=(L.glass||[]).map(g=>({ poly:xform(makeShape(g.s), g.x, g.y, g.r||0), s:g.s, x:g.x, y:g.y, r:g.r||0 }));
+    glass=(L.glass||[]).map(g=>{
+      const poly=xform(makeShape(g.s), g.x, g.y, g.r||0);
+      let z=g.z;
+      if(z==null){
+        let best=null, bestD=1e9;
+        for(const b of boards){
+          if((b.s&&b.s[0])!==(g.s&&g.s[0])) continue;
+          const d=Math.hypot(b.x-g.x, b.y-g.y);
+          if(d<bestD){ bestD=d; best=b; }
+        }
+        z=best? best.z+0.5 : 0.5;
+      }
+      return { poly, s:g.s, x:g.x, y:g.y, r:g.r||0, z };
+    });
     glassMelted=false;
+    fitPlayfield();
     queue=L.queue.map(c=>({color:c, cap:3, fill:[]}));
     slotCount=L.slots||2;
     items={add:L.items.add, clear:L.items.clear, melt:L.items.melt, unlock:L.items.unlock};
@@ -804,7 +900,7 @@ button.ghost{
     const n=screws.length;
     const boardZ=boards.map(b=>b.z);
     const boardPoly=boards.map(b=>worldBoard(b));
-    const glassPolys=glass.map(g=>g.poly);
+    const glassPolys=glass.map(g=>({poly:g.poly, z:g.z}));
     const screwData=screws.map(s=>({x:s.x,y:s.y,z:s.z,bid:s.bid,color:s.color}));
     const colors=screwData.map(s=>s.color);
     const initMask=(1<<n)-1;
@@ -826,7 +922,10 @@ button.ghost{
         if(useCenter ? pip(s.x,s.y,boardPoly[bi]) : circleHitsPoly(s.x,s.y,BLOCK_R,boardPoly[bi])) return true;
       }
       if(!melt){
-        for(const g of glassPolys) if(useCenter ? pip(s.x,s.y,g) : circleHitsPoly(s.x,s.y,GLASS_R,g)) return true;
+        for(const g of glassPolys){
+          if(s.z>=g.z) continue;
+          if(useCenter ? pip(s.x,s.y,g.poly) : circleHitsPoly(s.x,s.y,GLASS_R,g.poly)) return true;
+        }
       }
       return false;
     }
@@ -1017,10 +1116,11 @@ button.ghost{
     ctx.restore();
   }
 
-  function drawScrewHead(x,y,color, ang, scale, shake){
+  function drawScrewHead(x,y,color, ang, scale, shake, dim){
     ctx.save();
     ctx.translate(x+(shake?Math.sin(idleT*40)*3:0), y);
     ctx.rotate(ang||0); ctx.scale(scale||1, scale||1);
+    if(dim) ctx.globalAlpha=0.55;
     ctx.beginPath(); ctx.arc(1.5,2.5,SR,0,Math.PI*2);
     ctx.fillStyle='rgba(0,0,0,.16)'; ctx.fill();
     const g=ctx.createRadialGradient(-4,-4,2,0,0,SR);
@@ -1037,21 +1137,27 @@ button.ghost{
     ctx.strokeStyle='rgba(0,0,0,.15)'; ctx.lineWidth=1.2;
     ctx.beginPath(); ctx.moveTo(-7,0); ctx.lineTo(7,0);
     ctx.moveTo(0,-7); ctx.lineTo(0,7); ctx.stroke();
+    if(dim){
+      ctx.globalAlpha=0.42;
+      ctx.beginPath(); ctx.arc(0,0,SR,0,Math.PI*2);
+      ctx.fillStyle='rgba(70,80,90,.5)'; ctx.fill();
+    }
     ctx.restore();
   }
 
+  function drawGlassPiece(g){
+    ctx.save();
+    ctx.globalAlpha=0.42;
+    roundPoly(g.poly, 8, 'rgba(190,230,255,0.9)', 'rgba(255,255,255,0.95)', 14);
+    ctx.globalAlpha=0.22;
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+    const p=g.poly[0];
+    ctx.beginPath(); ctx.moveTo(p[0]+8,p[1]+6); ctx.lineTo(p[0]+28,p[1]+18); ctx.stroke();
+    ctx.restore();
+  }
   function drawGlass(){
     if(glassMelted) return;
-    glass.forEach(g=>{
-      ctx.save();
-      ctx.globalAlpha=0.42;
-      roundPoly(g.poly, 8, 'rgba(190,230,255,0.9)', 'rgba(255,255,255,0.95)', 14);
-      ctx.globalAlpha=0.22;
-      ctx.strokeStyle='#fff'; ctx.lineWidth=2;
-      const p=g.poly[0];
-      ctx.beginPath(); ctx.moveTo(p[0]+8,p[1]+6); ctx.lineTo(p[0]+28,p[1]+18); ctx.stroke();
-      ctx.restore();
-    });
+    glass.forEach(drawGlassPiece);
   }
 
   function drawHolds(){
@@ -1132,28 +1238,45 @@ button.ghost{
     const x0=W/2-(n-1)*8;
     ctx.save();
     for(let i=0;i<n;i++){
-      ctx.beginPath(); ctx.arc(x0+i*16, 214, 3.2, 0, Math.PI*2);
+      ctx.beginPath(); ctx.arc(x0+i*16, QUEUE_DOT_Y, 3.2, 0, Math.PI*2);
       ctx.fillStyle=i===0? '#8aa0b5':'#d3deea';
       ctx.fill();
     }
     ctx.restore();
   }
 
+  function playHudActive(){
+    return mode==='play' && !winPending && !failPending
+      && $('overlay').classList.contains('hidden')
+      && $('pauseMenu').classList.contains('hidden');
+  }
+  let lastHudDrawn=false, lastDimmed=[];
   function draw(){
     drawBg();
-    slots.forEach(drawBox);
-    drawHolds();
-    drawQueueDots();
-    const order=boards.slice().sort((a,b)=>a.z-b.z);
-    order.forEach(b=>{
+    const hud=playHudActive();
+    lastHudDrawn=hud;
+    if(hud){
+      slots.forEach(drawBox);
+      drawHolds();
+      drawQueueDots();
+    }
+    lastDimmed=[];
+    const layers=[];
+    boards.forEach(b=>layers.push({z:b.z, kind:'board', b}));
+    if(!glassMelted) glass.forEach(g=>layers.push({z:g.z, kind:'glass', g}));
+    layers.sort((a,b)=>a.z-b.z || (a.kind==='board'?-1:1));
+    layers.forEach(layer=>{
+      if(layer.kind==='glass'){ drawGlassPiece(layer.g); return; }
+      const b=layer.b;
       drawBoard(b);
       if(b.removed && (!falls.some(f=>f.b===b) || (falls.find(f=>f.b===b)||{}).t>1)) return;
       screws.forEach(s=>{
         if(s.removed || s.bid!==b.id) return;
-        drawScrewHead(s.x,s.y,s.color,0,1,s.shake);
+        const dim=screwBlocked(s);
+        if(dim) lastDimmed.push(s.id);
+        drawScrewHead(s.x,s.y,s.color,0,1,s.shake,dim);
       });
     });
-    drawGlass();
     flies.forEach(f=>{
       const t=ease(Math.min(1,f.t));
       const x=lerp(f.x0,f.x1,t);
@@ -1318,6 +1441,7 @@ button.ghost{
         const gC=[], gR=[];
         if(!glassMelted){
           glass.forEach((g,gi)=>{
+            if(s.z>=g.z) return;
             if(pip(s.x,s.y,g.poly)) gC.push('G'+gi);
             if(circleHitsPoly(s.x,s.y,GLASS_R,g.poly)) gR.push('G'+gi);
           });
@@ -1356,7 +1480,7 @@ button.ghost{
             if(ob.z<=b.z) return;
             if(screws.some(s=>s.bid===oi && !s.removed) && circleHitsPoly(wp.x,wp.y,BLOCK_R,worldBoard(ob))) over.push('B'+oi);
           });
-          glass.forEach((g,gi)=>{ if(circleHitsPoly(wp.x,wp.y,GLASS_R,g.poly)) over.push('G'+gi); });
+          glass.forEach((g,gi)=>{ if(b.z<g.z && circleHitsPoly(wp.x,wp.y,GLASS_R,g.poly)) over.push('G'+gi); });
           if(over.length===0) pts.push({lx,ly,x:+wp.x.toFixed(1),y:+wp.y.toFixed(1)});
         }
       }
@@ -1366,7 +1490,7 @@ button.ghost{
       return {
         items:{...items}, slotCount, holdCount,
         holds:holds.map(h=>h?h.color:null),
-        glass:glass.map(g=>({s:g.s})),
+        glass:glass.map(g=>({s:g.s, z:g.z, x:+g.x.toFixed(1), y:+g.y.toFixed(1)})),
         boxes:slots.filter(s=>s.box).map(s=>({color:s.box.color,fill:s.box.fill.length,cap:s.box.cap})),
         locked:slots.filter(s=>s.locked && !s.box).length,
         queue:queue.map(b=>b.color),
@@ -1380,7 +1504,7 @@ button.ghost{
               if(b.z>s.z && screws.some(t=>t.bid===bi && !t.removed) && circleHitsPoly(s.x,s.y,BLOCK_R,worldBoard(b))) over.push('B'+bi);
             });
             if(!glassMelted){
-              glass.forEach((g,gi)=>{ if(circleHitsPoly(s.x,s.y,GLASS_R,g.poly)) over.push('G'+gi); });
+              glass.forEach((g,gi)=>{ if(s.z<g.z && circleHitsPoly(s.x,s.y,GLASS_R,g.poly)) over.push('G'+gi); });
             }
             why=over.join('+')||'blocked?';
           }
@@ -1408,6 +1532,7 @@ button.ghost{
         if(!glassMelted){
           for(let gi=0;gi<glass.length;gi++){
             const g=glass[gi];
+            if(s.z>=g.z) continue;
             if(circleHitsPoly(x,y,GLASS_R,g.poly) && !pip(x,y,g.poly)) out.push('G'+gi);
           }
         }
@@ -1463,6 +1588,7 @@ button.ghost{
         }
         if(!glassMelted){
           for(const g of glass){
+            if(s.z>=g.z) continue;
             if(circleHitsPoly(x,y,GLASS_R,g.poly)) return false;
           }
         }
@@ -1484,7 +1610,26 @@ button.ghost{
         return {i,c:s.color,bid:s.bid,from:[+cur.lx.toFixed(1),+cur.ly.toFixed(1)],to:null,r:null};
       }).filter(Boolean);
     },
-    levels: LEVELS.length
+    levels: LEVELS.length,
+    safeRect: playSafeRect,
+    playBounds,
+    fitInfo(){ return lastFit; },
+    hudActive: playHudActive,
+    hudDrawn(){ return lastHudDrawn; },
+    dimmed(){ return lastDimmed.slice(); },
+    glassInfo(){ return glass.map((g,i)=>({i, z:g.z, s:g.s, x:+g.x.toFixed(1), y:+g.y.toFixed(1)})); },
+    layout(){
+      return {
+        BOX_Y, HOLD_Y, QUEUE_DOT_Y, W, H, SR,
+        boxSlots: layoutSlots(),
+        holds: holdLayout(),
+        holdBar: {x:W/2-(holdCount*HOLD_GAP+26)/2, y:HOLD_Y-20, w:holdCount*HOLD_GAP+26, h:40},
+        pauseCss: {x:12,y:12,w:42,h:42},
+        boxHandleTop: BOX_Y-62,
+        boxBody: {y0:BOX_Y-42, y1:BOX_Y+32}
+      };
+    },
+    overlayBg(){ return getComputedStyle($('overlay')).backgroundColor; }
   };
 })();
 </script>
