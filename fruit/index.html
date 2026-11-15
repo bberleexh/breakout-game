@@ -65,7 +65,7 @@ button:active{transform:translateY(2px);box-shadow:0 2px 0 #b06a12}
   };
 
   const W = 390, H = 700;
-  const GRAVITY = 420;
+  const GRAVITY = 160;
   const cv = document.getElementById('c');
   const ctx = cv.getContext('2d');
   cv.width = W; cv.height = H;
@@ -168,7 +168,7 @@ button:active{transform:translateY(2px);box-shadow:0 2px 0 #b06a12}
     score = 0; lives = 3;
     items = []; halves = []; particles = []; trail = [];
     missPops = []; combo = 0; comboT = 0; comboPop = null;
-    spawnT = 0.7; runT = 0; shake = 0; flash = 0;
+    spawnT = 1.2; runT = 0; shake = 0; flash = 0;
     slicing = false;
     overlay.classList.add('hidden');
     hud.classList.add('show');
@@ -181,8 +181,8 @@ button:active{transform:translateY(2px);box-shadow:0 2px 0 #b06a12}
   function throwItem(isBomb){
     const x = rand(60, W - 60);
     const goingRight = x < W / 2;
-    const vx = (goingRight ? 1 : -1) * rand(30, 90);
-    const vy = -rand(540, 680);
+    const vx = (goingRight ? 1 : -1) * rand(20, 55);
+    const vy = -rand(280, 360);
     if (isBomb){
       items.push({
         type:'bomb', x:x, y:H + 30, vx:vx, vy:vy, r:28,
@@ -199,16 +199,16 @@ button:active{transform:translateY(2px);box-shadow:0 2px 0 #b06a12}
 
   function maybeSpawn(){
     const wave = Math.min(1, runT / 45);
-    const interval = 1.15 - wave * 0.5;
+    const interval = 2.0 - wave * 0.4;
     spawnT -= lastDt;
     if (spawnT > 0) return;
     spawnT = interval * rand(0.75, 1.15);
-    const cluster = Math.random() < 0.18 + wave * 0.2 ? (Math.random() < 0.45 ? 3 : 2) : 1;
+    const cluster = Math.random() < 0.10 + wave * 0.12 ? (Math.random() < 0.35 ? 3 : 2) : 1;
     for (let i = 0; i < cluster; i++){
       const bombChance = runT < 6 ? 0 : (0.08 + wave * 0.1);
       setTimeout(() => {
         if (playing) throwItem(Math.random() < bombChance);
-      }, i * 140);
+      }, i * 260);
     }
   }
 
