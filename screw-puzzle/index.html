@@ -174,6 +174,31 @@ button.ghost{
     const p=[]; for(let i=0;i<6;i++){ const a=-Math.PI/2+i*Math.PI/3; p.push([Math.cos(a)*r,Math.sin(a)*r]); }
     return p;
   }
+  function petal(rx, ry, lobes, dent){
+    lobes=lobes||5; dent=dent||0.55; ry=ry||rx;
+    const pts=[], steps=lobes*8;
+    for(let i=0;i<steps;i++){
+      const a=-Math.PI/2+i*Math.PI*2/steps;
+      const wave=Math.pow(0.5+0.5*Math.cos(a*lobes), 1.15);
+      const rad=dent+(1-dent)*wave;
+      pts.push([Math.cos(a)*rx*rad, Math.sin(a)*ry*rad]);
+    }
+    return pts;
+  }
+  function blob(rx, ry, v){
+    ry=ry||rx*0.86;
+    const amps=[
+      [1.00,0.84,1.06,0.80,0.98,0.82,1.08,0.88],
+      [0.92,1.08,0.86,1.02,0.78,1.06,0.90,1.00],
+      [1.05,0.88,0.96,1.10,0.82,0.94,1.04,0.86]
+    ][v||0];
+    const n=amps.length, pts=[];
+    for(let i=0;i<n;i++){
+      const a=-Math.PI/2+i*Math.PI*2/n;
+      pts.push([Math.cos(a)*rx*amps[i], Math.sin(a)*ry*amps[i]]);
+    }
+    return pts;
+  }
   function xform(pts,x,y,rot){
     const c=Math.cos(rot||0), s=Math.sin(rot||0);
     return pts.map(([px,py])=>[px*c-py*s+x, px*s+py*c+y]);
@@ -186,8 +211,35 @@ button.ghost{
     }
     return c;
   }
+  function distToSeg(px,py,ax,ay,bx,by){
+    const vx=bx-ax, vy=by-ay, den=vx*vx+vy*vy;
+    const t=den<1e-9?0:Math.max(0,Math.min(1,((px-ax)*vx+(py-ay)*vy)/den));
+    return Math.hypot(px-ax-t*vx, py-ay-t*vy);
+  }
+  // Circle vs polygon: center inside, or any edge within radius r.
+  function circleHitsPoly(cx,cy,r,poly){
+    if(!poly || poly.length<3) return false;
+    if(pip(cx,cy,poly)) return true;
+    for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+      if(distToSeg(cx,cy, poly[j][0],poly[j][1], poly[i][0],poly[i][1])<=r) return true;
+    }
+    return false;
+  }
+  // Visual cover: whole screw head (plus a little edge) vs a board/glass drawn with a fat stroke.
+  const BOARD_STROKE=7;  // half of the 14px white outline
+  const GLASS_STROKE=4;  // half of the 8px glass outline
+  const SCREW_EDGE=3;    // screw-head stroke + a little margin
+  const BLOCK_R=SR+SCREW_EDGE+BOARD_STROKE;
+  const GLASS_R=SR+SCREW_EDGE+GLASS_STROKE;
+  const HOLD_Y=178, HOLD_GAP=38, HOLD_R=15, HOLD_MAX=5, HOLD_START=3;
   function lerp(a,b,t){ return a+(b-a)*t; }
   function ease(t){ return 1-Math.pow(1-t,3); }
+  function hexRgba(h,a){
+    let n=(h||'#cccccc').replace('#','');
+    if(n.length===3) n=n.split('').map(c=>c+c).join('');
+    const v=parseInt(n,16);
+    return 'rgba('+(v>>16)+','+((v>>8)&255)+','+(v&255)+','+a+')';
+  }
 
   function makeShape(def){
     if(def[0]==='rect') return rect(def[1],def[2]);
@@ -197,211 +249,217 @@ button.ghost{
     if(def[0]==='u') return polyU(def[1],def[2],def[3]);
     if(def[0]==='plus') return polyPlus(def[1],def[2]);
     if(def[0]==='hex') return hex(def[1]);
+    if(def[0]==='petal') return petal(def[1], def[2], def[3], def[4]);
+    if(def[0]==='blob') return blob(def[1], def[2], def[3]);
     return rect(80,80);
   }
 
   /* boards: {s, x,y,r,col,z, sc:[[lx,ly,color],...] }  queue: color names */
   const LEVELS = [
-    { // 1 简单，顶板 3 螺丝 3 色且都能点
-      slots:3, items:{add:1,clear:1,melt:0,unlock:0},
+    { // 1 大块叠层异形玻璃，可教暂存
+      slots:2, items:{add:1,clear:1,melt:0,unlock:1},
       queue:['green','brown','purple'],
       boards:[
-        {s:['rect',210,160], x:196,y:400,r:-0.05, col:'#FFE56A', z:2, sc:[[-68,-50,'green'],[68,-50,'brown'],[0,52,'purple']]},
-        {s:['rect',230,150], x:196,y:425,r:0.08, col:'#7FE0F0', z:1, sc:[[-70,-40,'brown'],[70,-40,'purple'],[0,28,'green']]},
-        {s:['hex',86], x:196,y:450,r:0.08, col:'#FFB0D0', z:0, sc:[[-30,-18,'purple'],[30,-18,'green'],[0,30,'brown']]}
+        {s:['l',220,200,84,false], x:126,y:348,r:-0.36, col:'#7FE0F0', z:2, sc:[[-76,-58,'green'],[76,-58,'brown'],[-70,68,'purple']]},
+        {s:['star',118], x:214,y:428,r:0.14, col:'#FFE56A', z:1, sc:[[0,-46,'brown'],[40,16,'green'],[-40,16,'purple']]},
+        {s:['petal',114,100,5,0.56], x:262,y:518,r:0.18, col:'#FFB0D0', z:0, sc:[[-40,-18,'purple'],[40,-14,'green'],[0,42,'brown']]}
       ]
     },
-    { // 2 三色混在每块板上，开始叠压
-      slots:2, items:{add:1,clear:1,melt:0,unlock:0},
-      queue:['green','brown','purple'],
+    { // 2 四色，L+花瓣+星+U
+      slots:2, items:{add:1,clear:1,melt:0,unlock:1},
+      queue:['green','brown','purple','yellow'],
       boards:[
-        {s:['l',186,164,72,false], x:148,y:335,r:-0.18, col:'#FFB0D0', z:2, sc:[[-64,-45,'green'],[64,-45,'brown'],[0,-45,'purple']]},
-        {s:['rect',198,92], x:236,y:445,r:0.12, col:'#7FE0F0', z:1, sc:[[-62,0,'brown'],[0,0,'purple'],[62,0,'green']]},
-        {s:['hex',76], x:132,y:530,r:0.1, col:'#C0EC70', z:0, sc:[[-28,-16,'purple'],[28,-16,'green'],[0,28,'brown']]}
+        {s:['l',200,184,78,false], x:118,y:328,r:-0.40, col:'#7FE0F0', z:3, sc:[[-70,-54,'green'],[70,-54,'brown'],[-64,62,'yellow']]},
+        {s:['blob',112,94,0], x:210,y:402,r:0.10, col:'#C0EC70', z:2, sc:[[-36,-16,'brown'],[36,-10,'purple'],[0,32,'green']]},
+        {s:['star',98], x:272,y:348,r:-0.12, col:'#FFE56A', z:1, sc:[[0,-36,'purple'],[32,14,'yellow'],[-32,14,'green']]},
+        {s:['u',210,132,58], x:200,y:532,r:0.06, col:'#FFB0D0', z:0, sc:[[-72,-28,'yellow'],[72,-28,'purple'],[0,42,'brown']]}
       ]
     },
-    { // 3 四色，L+条，要轮换盒子
-      slots:2, items:{add:1,clear:1,melt:0,unlock:0},
+    { // 3 五块异形，四色混色
+      slots:2, items:{add:1,clear:1,melt:0,unlock:1},
       queue:['green','brown','yellow','purple'],
       boards:[
-        {s:['l',188,168,72,true], x:250,y:318,r:-0.22, col:'#7FE0F0', z:3, sc:[[64,-46,'green'],[-64,-46,'brown'],[0,-46,'yellow']]},
-        {s:['rect',200,88], x:145,y:430,r:0.12, col:'#FFB0D0', z:2, sc:[[-64,0,'brown'],[0,0,'purple'],[64,0,'green']]},
-        {s:['l',170,150,66,false], x:255,y:505,r:0.28, col:'#FFE56A', z:1, sc:[[-58,-42,'yellow'],[58,-42,'purple'],[-52,48,'brown']]},
-        {s:['hex',72], x:108,y:538,r:0, col:'#D0B8F0', z:0, sc:[[-26,-14,'yellow'],[26,-14,'purple'],[0,26,'green']]}
+        {s:['l',198,178,76,false], x:112,y:322,r:-0.42, col:'#7FE0F0', z:4, sc:[[-68,-52,'green'],[68,-52,'brown'],[-62,60,'yellow']]},
+        {s:['l',198,178,76,true], x:280,y:322,r:0.42, col:'#C0EC70', z:3, sc:[[68,-52,'brown'],[-68,-52,'purple'],[62,60,'green']]},
+        {s:['star',96], x:196,y:412,r:0.10, col:'#FFB0D0', z:2, sc:[[0,-36,'yellow'],[32,14,'purple']]},
+        {s:['blob',100,86,1], x:196,y:470,r:-0.2, col:'#FFE56A', z:1, sc:[[-30,-10,'green'],[30,8,'brown']]},
+        {s:['petal',90,80,5,0.58], x:196,y:548,r:0.15, col:'#D0B8F0', z:0, sc:[[-28,-12,'yellow'],[28,10,'purple']]}
       ]
     },
-    { // 4 星形混色（像参考图），五色
+    { // 4 接近参考图的双L+星
       slots:2, items:{add:1,clear:1,melt:0,unlock:1},
       queue:['green','brown','purple','yellow','pink'],
       boards:[
-        {s:['star',92], x:196,y:368,r:0.05, col:'#FFB0D0', z:4, sc:[[0,-32,'green'],[30,10,'brown'],[-30,10,'purple'],[20,-16,'yellow'],[-20,-16,'pink']]},
-        {s:['l',176,156,68,false], x:112,y:300,r:-0.42, col:'#7FE0F0', z:3, sc:[[-60,-43,'brown'],[58,-43,'green'],[0,-43,'yellow']]},
-        {s:['l',176,156,68,true], x:278,y:300,r:0.42, col:'#C0EC70', z:2, sc:[[60,-43,'purple'],[-58,-43,'pink'],[0,-43,'brown']]},
-        {s:['rect',210,84], x:196,y:500,r:0, col:'#FFE56A', z:1, sc:[[-70,0,'yellow'],[0,0,'pink']]},
-        {s:['hex',70], x:196,y:548,r:0.15, col:'#FFC8A0', z:0, sc:[[-24,-14,'purple'],[24,-14,'green']]}
+        {s:['l',200,180,76,false], x:112,y:325,r:-0.48, col:'#7FE0F0', z:4, sc:[[-70,-52,'green'],[70,-52,'brown'],[0,-52,'yellow']]},
+        {s:['star',104], x:196,y:412,r:0.08, col:'#FFE56A', z:3, sc:[[0,-40,'brown'],[34,14,'green'],[-34,14,'purple'],[22,-18,'pink']]},
+        {s:['l',200,180,76,true], x:280,y:325,r:0.48, col:'#C0EC70', z:2, sc:[[70,-52,'purple'],[-70,-52,'pink'],[0,-52,'brown']]},
+        {s:['blob',108,90,0], x:130,y:520,r:0.2, col:'#FFB0D0', z:1, sc:[[-32,-12,'yellow'],[32,6,'purple'],[0,30,'green']]},
+        {s:['u',190,120,54], x:268,y:535,r:-0.12, col:'#FFC8A0', z:0, sc:[[-64,-24,'pink'],[64,-24,'yellow']]}
       ]
     },
-    { // 5 槽位紧张，五色更密
+    { // 5 六块更密，五色
       slots:2, items:{add:1,clear:1,melt:0,unlock:1},
       queue:['green','brown','yellow','purple','pink'],
       boards:[
-        {s:['t',200,136,62], x:196,y:300,r:0, col:'#FFE56A', z:4, sc:[[-70,-38,'green'],[70,-38,'brown'],[0,-38,'purple'],[0,42,'yellow']]},
-        {s:['u',200,130,56], x:196,y:430,r:0, col:'#FFB0D0', z:3, sc:[[-70,-28,'brown'],[70,-28,'yellow'],[0,36,'pink']]},
-        {s:['l',168,146,64,false], x:108,y:520,r:0.1, col:'#7FE0F0', z:2, sc:[[-56,-40,'yellow'],[54,-40,'purple'],[-50,46,'brown']]},
-        {s:['l',168,146,64,true], x:284,y:520,r:-0.1, col:'#C0EC70', z:1, sc:[[56,-40,'purple'],[-54,-40,'pink'],[50,46,'green']]},
-        {s:['hex',68], x:196,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-24,-14,'pink'],[24,-14,'green']]}
+        {s:['t',210,140,62], x:196,y:300,r:0, col:'#FFE56A', z:5, sc:[[-72,-40,'green'],[72,-40,'brown'],[0,-40,'purple']]},
+        {s:['star',90], x:196,y:400,r:-0.1, col:'#FFB0D0', z:4, sc:[[0,-32,'brown'],[28,12,'yellow'],[-28,12,'pink']]},
+        {s:['l',176,156,68,false], x:108,y:430,r:0.15, col:'#7FE0F0', z:3, sc:[[-60,-44,'yellow'],[56,-44,'purple']]},
+        {s:['l',176,156,68,true], x:284,y:430,r:-0.15, col:'#C0EC70', z:2, sc:[[60,-44,'purple'],[-56,-44,'pink'],[52,48,'green']]},
+        {s:['blob',88,74,2], x:196,y:500,r:0.1, col:'#D0B8F0', z:1, sc:[[-24,-8,'pink'],[24,6,'green']]},
+        {s:['petal',78,70,5,0.58], x:196,y:552,r:0, col:'#A8E8C0', z:0, sc:[[-22,-8,'yellow'],[22,8,'brown']]}
       ]
     },
-    { // 6 首次玻璃，四色但仍要道具
+    { // 6 首次玻璃，四色
       slots:2, items:{add:1,clear:1,melt:1,unlock:1},
       queue:['green','brown','yellow','purple'],
       boards:[
-        {s:['plus',86,56], x:196,y:305,r:0.2, col:'#7FE0F0', z:3, sc:[[0,-54,'green'],[-54,0,'brown'],[54,0,'yellow'],[0,54,'purple']]},
-        {s:['rect',176,90], x:124,y:430,r:-0.1, col:'#FFB0D0', z:2, sc:[[-54,0,'brown'],[0,0,'purple'],[54,0,'green']]},
-        {s:['rect',168,90], x:268,y:430,r:0.1, col:'#FFE56A', z:1, sc:[[-50,0,'yellow'],[0,0,'brown'],[50,0,'purple']]},
-        {s:['hex',78], x:196,y:540,r:0, col:'#D0B8F0', z:0, sc:[[-30,-16,'yellow'],[30,-16,'green']]}
+        {s:['plus',90,58], x:196,y:310,r:0.2, col:'#7FE0F0', z:4, sc:[[0,-56,'green'],[56,0,'yellow']]},
+        {s:['l',180,160,70,false], x:114,y:430,r:-0.12, col:'#FFB0D0', z:3, sc:[[-62,-44,'brown'],[58,-44,'purple'],[-54,50,'green']]},
+        {s:['l',180,160,70,true], x:278,y:430,r:0.12, col:'#FFE56A', z:2, sc:[[62,-44,'yellow'],[-58,-44,'brown'],[54,50,'purple']]},
+        {s:['blob',96,82,1], x:196,y:470,r:0, col:'#C0EC70', z:1, sc:[[-28,-12,'yellow'],[28,10,'green']]},
+        {s:['hex',74], x:196,y:548,r:0.08, col:'#D0B8F0', z:0, sc:[[-26,-12,'purple'],[26,-8,'brown']]}
       ],
-      glass:[{s:['rect',156,82], x:268,y:430,r:0.1}]
+      glass:[{s:['hex',80], x:196,y:548,r:0.08}]
     },
     { // 7 星+双L，六色，玻璃
       slots:2, items:{add:2,clear:1,melt:1,unlock:1},
       queue:['green','brown','purple','yellow','pink','blue'],
       boards:[
-        {s:['star',84], x:196,y:350,r:-0.08, col:'#FFB0D0', z:5, sc:[[0,-30,'green'],[28,10,'brown'],[-28,10,'purple'],[18,-14,'yellow'],[-18,-14,'pink']]},
-        {s:['l',184,166,70,false], x:110,y:315,r:-0.38, col:'#7FE0F0', z:4, sc:[[-64,-45,'brown'],[62,-45,'green'],[0,-45,'blue'],[-54,52,'purple']]},
-        {s:['l',184,166,70,true], x:282,y:315,r:0.38, col:'#C0EC70', z:3, sc:[[64,-45,'purple'],[-62,-45,'yellow'],[0,-45,'brown']]},
-        {s:['rect',214,82], x:196,y:490,r:0, col:'#FFE56A', z:2, sc:[[-72,0,'yellow'],[0,0,'blue']]},
-        {s:['hex',66], x:112,y:548,r:0, col:'#FFC8A0', z:1, sc:[[-22,-12,'pink'],[22,-12,'blue']]},
-        {s:['hex',66], x:280,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-22,-12,'pink'],[22,-12,'green']]}
+        {s:['star',92], x:196,y:350,r:-0.08, col:'#FFB0D0', z:5, sc:[[0,-34,'green'],[30,12,'brown'],[-30,12,'purple'],[20,-16,'yellow'],[-20,-16,'pink']]},
+        {s:['l',190,170,72,false], x:108,y:318,r:-0.38, col:'#7FE0F0', z:4, sc:[[-66,-48,'brown'],[64,-48,'green'],[0,-48,'blue'],[-56,54,'purple']]},
+        {s:['l',190,170,72,true], x:284,y:318,r:0.38, col:'#C0EC70', z:3, sc:[[66,-48,'purple'],[-64,-48,'yellow'],[0,-48,'brown']]},
+        {s:['blob',108,88,0], x:196,y:490,r:0, col:'#FFE56A', z:2, sc:[[-34,-8,'yellow'],[34,8,'blue']]},
+        {s:['petal',72,64,5,0.58], x:108,y:548,r:0.1, col:'#FFC8A0', z:1, sc:[[-18,4,'pink'],[22,6,'blue']]},
+        {s:['hex',70], x:284,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-20,4,'pink'],[24,4,'green']]}
       ],
-      glass:[{s:['rect',140,70], x:196,y:490,r:0}]
+      glass:[{s:['blob',96,80,0], x:196,y:490,r:0}]
     },
-    { // 8 六色更密，顺序很重要
+    { // 8 六色更密
       slots:2, items:{add:2,clear:2,melt:1,unlock:1},
       queue:['green','brown','yellow','purple','pink','blue'],
       boards:[
-        {s:['plus',90,58], x:196,y:298,r:0, col:'#FFE56A', z:5, sc:[[0,-58,'green'],[0,58,'brown'],[-58,0,'yellow'],[58,0,'purple']]},
-        {s:['t',210,140,62], x:196,y:405,r:3.1416, col:'#FFB0D0', z:4, sc:[[-68,-40,'brown'],[68,-40,'green'],[0,-40,'pink'],[0,42,'blue']]},
-        {s:['u',210,136,58], x:196,y:508,r:0, col:'#7FE0F0', z:3, sc:[[-74,-30,'yellow'],[74,-30,'purple'],[0,40,'pink']]},
-        {s:['l',156,136,60,false], x:96,y:300,r:0.48, col:'#C0EC70', z:2, sc:[[-46,-34,'purple'],[42,-34,'blue'],[-46,34,'green']]},
-        {s:['l',156,136,60,true], x:296,y:300,r:-0.48, col:'#FFC8A0', z:1, sc:[[46,-34,'pink'],[-42,-34,'yellow']]},
-        {s:['hex',70], x:196,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-24,-14,'blue'],[24,-14,'brown']]}
+        {s:['plus',92,58], x:196,y:300,r:0, col:'#FFE56A', z:5, sc:[[0,-58,'green'],[0,58,'brown'],[-58,0,'yellow'],[58,0,'purple']]},
+        {s:['t',214,142,62], x:196,y:408,r:3.1416, col:'#FFB0D0', z:4, sc:[[-70,-40,'brown'],[70,-40,'green'],[0,-40,'pink'],[0,42,'blue']]},
+        {s:['u',214,138,58], x:196,y:520,r:0, col:'#7FE0F0', z:3, sc:[[-74,-8,'yellow'],[74,-8,'purple'],[0,48,'pink']]},
+        {s:['l',160,140,60,false], x:96,y:305,r:0.48, col:'#C0EC70', z:2, sc:[[-46,-34,'purple'],[42,-34,'blue'],[-46,34,'green']]},
+        {s:['l',160,140,60,true], x:296,y:305,r:-0.48, col:'#FFC8A0', z:1, sc:[[46,-34,'pink'],[-42,-34,'yellow']]},
+        {s:['hex',72], x:196,y:552,r:0, col:'#D0B8F0', z:0, sc:[[-24,-12,'blue'],[24,-12,'brown']]}
       ],
-      glass:[{s:['rect',150,68], x:196,y:508,r:0}]
+      glass:[{s:['u',180,110,50], x:196,y:520,r:0}]
     },
-    { // 9 接近参考图布局，六色层层叠
+    { // 9 接近参考图布局，六色
       slots:2, items:{add:2,clear:2,melt:1,unlock:1},
       queue:['green','brown','purple','yellow','pink','cyan'],
       boards:[
-        {s:['l',196,176,74,true], x:118,y:325,r:-0.55, col:'#7FE0F0', z:5, sc:[[-66,-48,'green'],[66,-48,'brown'],[0,-48,'purple'],[58,54,'yellow']]},
-        {s:['star',94], x:196,y:408,r:0.12, col:'#FFB0D0', z:4, sc:[[0,-32,'brown'],[30,12,'green'],[-30,12,'pink'],[20,-16,'cyan'],[-20,-16,'purple']]},
-        {s:['l',196,176,74,false], x:274,y:325,r:0.55, col:'#C0EC70', z:3, sc:[[66,-48,'yellow'],[-66,-48,'pink'],[0,-48,'cyan']]},
-        {s:['l',180,154,68,false], x:118,y:515,r:0.18, col:'#FFE56A', z:2, sc:[[-60,-40,'yellow'],[58,-40,'purple']]},
-        {s:['l',180,154,68,true], x:274,y:515,r:-0.18, col:'#D0B8F0', z:1, sc:[[60,-40,'cyan'],[-58,-40,'brown']]},
-        {s:['hex',72], x:196,y:548,r:0, col:'#FFC8A0', z:0, sc:[[-26,-14,'pink'],[26,-14,'green']]}
+        {s:['l',200,180,76,true], x:116,y:328,r:-0.55, col:'#7FE0F0', z:5, sc:[[-68,-50,'green'],[68,-50,'brown'],[0,-50,'purple'],[58,56,'yellow']]},
+        {s:['star',102], x:196,y:412,r:0.12, col:'#FFE56A', z:4, sc:[[0,-38,'brown'],[34,14,'green'],[-34,14,'pink'],[24,-18,'cyan'],[-24,-18,'purple']]},
+        {s:['l',200,180,76,false], x:276,y:328,r:0.55, col:'#C0EC70', z:3, sc:[[68,-50,'yellow'],[-68,-50,'pink'],[0,-50,'cyan']]},
+        {s:['l',184,158,70,false], x:116,y:522,r:0.20, col:'#FFB0D0', z:2, sc:[[-62,-42,'yellow'],[60,-42,'purple']]},
+        {s:['l',184,158,70,true], x:276,y:522,r:-0.20, col:'#D0B8F0', z:1, sc:[[62,-42,'cyan'],[-60,-42,'brown']]},
+        {s:['blob',90,76,1], x:196,y:548,r:0, col:'#B8C8E0', z:0, sc:[[-26,-8,'pink'],[26,-8,'green']]}
       ],
-      glass:[{s:['hex',80], x:196,y:548,r:0}]
+      glass:[{s:['blob',86,72,1], x:196,y:548,r:0}]
     },
     { // 10 七色，双层玻璃
       slots:2, items:{add:2,clear:2,melt:1,unlock:1},
       queue:['green','brown','purple','yellow','pink','blue','orange'],
       boards:[
-        {s:['star',86], x:196,y:345,r:0, col:'#FFB0D0', z:6, sc:[[0,-28,'green'],[26,9,'brown'],[-26,9,'purple'],[17,-14,'yellow']]},
-        {s:['plus',80,54], x:196,y:345,r:0.4, col:'#FFE56A', z:5, sc:[[0,-52,'brown'],[52,0,'green'],[0,52,'pink']]},
-        {s:['l',184,166,70,false], x:106,y:298,r:-0.28, col:'#7FE0F0', z:4, sc:[[-62,-45,'purple'],[60,-45,'yellow'],[0,-45,'orange']]},
-        {s:['l',184,166,70,true], x:286,y:298,r:0.28, col:'#C0EC70', z:3, sc:[[62,-45,'yellow'],[-60,-45,'pink'],[0,-45,'blue']]},
-        {s:['t',206,128,60], x:196,y:492,r:0, col:'#FFC8A0', z:2, sc:[[-68,-32,'pink'],[68,-32,'orange']]},
-        {s:['u',198,118,52], x:196,y:548,r:0, col:'#D0B8F0', z:1, sc:[[-68,-26,'blue'],[68,-26,'orange']]},
-        {s:['hex',62], x:92,y:548,r:0, col:'#7FE0F0', z:0, sc:[[-20,-12,'blue'],[20,-12,'purple']]},
-        {s:['hex',62], x:300,y:548,r:0, col:'#FFE56A', z:0, sc:[[-20,-12,'green'],[20,-12,'brown']]}
+        {s:['star',90], x:196,y:348,r:0, col:'#FFB0D0', z:6, sc:[[0,-32,'green'],[28,12,'brown'],[-28,12,'purple'],[18,-16,'yellow']]},
+        {s:['plus',82,54], x:196,y:348,r:0.4, col:'#FFE56A', z:5, sc:[[0,-54,'brown'],[54,0,'green'],[0,54,'pink']]},
+        {s:['l',188,168,72,false], x:104,y:300,r:-0.28, col:'#7FE0F0', z:4, sc:[[-64,-46,'purple'],[62,-46,'yellow'],[0,-46,'orange']]},
+        {s:['l',188,168,72,true], x:288,y:300,r:0.28, col:'#C0EC70', z:3, sc:[[64,-46,'yellow'],[-62,-46,'pink'],[0,-46,'blue']]},
+        {s:['t',210,130,60], x:196,y:492,r:0, col:'#FFC8A0', z:2, sc:[[-70,-34,'pink'],[70,-34,'orange']]},
+        {s:['u',200,122,54], x:196,y:548,r:0, col:'#D0B8F0', z:1, sc:[[-68,-26,'blue'],[68,-26,'orange']]},
+        {s:['petal',70,62,5,0.58], x:88,y:548,r:0.1, col:'#A8E8C0', z:0, sc:[[-16,0,'blue'],[18,4,'purple']]},
+        {s:['hex',64], x:304,y:548,r:0, col:'#B8C8E0', z:0, sc:[[-20,-10,'green'],[20,-10,'brown']]}
       ],
       glass:[
-        {s:['rect',176,68], x:196,y:492,r:0},
-        {s:['rect',176,58], x:196,y:548,r:0}
+        {s:['t',180,80,48], x:196,y:470,r:0},
+        {s:['u',170,90,46], x:196,y:548,r:0}
       ]
     },
-    { // 11 更乱，青+橙加入队列压力
+    { // 11 七色队列压力
       slots:2, items:{add:2,clear:2,melt:1,unlock:1},
       queue:['green','brown','cyan','purple','yellow','pink','orange'],
       boards:[
-        {s:['l',200,176,74,true], x:120,y:318,r:-0.5, col:'#7FE0F0', z:5, sc:[[-68,-48,'green'],[66,-48,'brown'],[0,-48,'cyan'],[58,54,'purple']]},
-        {s:['star',90], x:196,y:400,r:-0.15, col:'#FFB0D0', z:4, sc:[[0,-30,'brown'],[28,11,'yellow'],[-28,11,'pink'],[18,-15,'orange'],[-18,-15,'green']]},
-        {s:['l',200,176,74,false], x:272,y:318,r:0.5, col:'#C0EC70', z:3, sc:[[68,-48,'cyan'],[-66,-48,'yellow'],[0,-48,'orange'],[32,-80,'purple']]},
-        {s:['rect',220,80], x:196,y:500,r:0.05, col:'#FFE56A', z:2, sc:[[-76,0,'yellow'],[-25,0,'pink'],[25,0,'cyan']]},
-        {s:['hex',70], x:112,y:548,r:0, col:'#FFC8A0', z:1, sc:[[-56,16,'pink'],[40,8,'purple'],[0,24,'orange']]},
-        {s:['hex',70], x:280,y:548,r:0, col:'#D0B8F0', z:0, sc:[[0,40,'green'],[48,16,'brown']]}
+        {s:['l',200,178,74,true], x:118,y:320,r:-0.50, col:'#7FE0F0', z:5, sc:[[-68,-50,'green'],[66,-50,'brown'],[0,-50,'cyan'],[58,54,'purple']]},
+        {s:['star',98], x:196,y:404,r:-0.15, col:'#FFE56A', z:4, sc:[[0,-36,'brown'],[32,14,'yellow'],[-32,14,'pink'],[24,-18,'orange'],[-24,-18,'green']]},
+        {s:['l',200,178,74,false], x:274,y:320,r:0.50, col:'#C0EC70', z:3, sc:[[68,-50,'cyan'],[-66,-50,'yellow'],[0,-50,'orange'],[-58,54,'purple']]},
+        {s:['blob',112,86,2], x:196,y:500,r:0.08, col:'#FFB0D0', z:2, sc:[[-36,0,'yellow'],[0,8,'pink'],[36,0,'cyan']]},
+        {s:['petal',78,70,5,0.56], x:110,y:548,r:0.1, col:'#FFC8A0', z:1, sc:[[-20,4,'pink'],[22,8,'purple'],[0,28,'orange']]},
+        {s:['hex',72], x:284,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-8,24,'green'],[24,8,'brown']]}
       ],
-      glass:[{s:['rect',200,70], x:196,y:500,r:0.05}]
+      glass:[{s:['blob',100,78,2], x:196,y:500,r:0.08}]
     },
     { // 12 七色满盘
       slots:2, items:{add:2,clear:2,melt:1,unlock:1},
       queue:['green','brown','purple','cyan','yellow','pink','blue'],
       boards:[
-        {s:['plus',88,58], x:196,y:300,r:0.15, col:'#FFE56A', z:6, sc:[[0,-56,'green'],[56,0,'brown'],[0,56,'purple'],[-56,0,'cyan']]},
-        {s:['star',82], x:196,y:400,r:0.2, col:'#FFB0D0', z:5, sc:[[0,-28,'brown'],[26,9,'yellow'],[-26,9,'pink'],[16,-14,'blue'],[-16,-14,'green']]},
-        {s:['l',176,160,68,false], x:104,y:310,r:-0.25, col:'#7FE0F0', z:4, sc:[[-60,-44,'purple'],[58,-44,'yellow'],[0,-44,'cyan']]},
-        {s:['l',176,160,68,true], x:288,y:310,r:0.25, col:'#C0EC70', z:3, sc:[[60,-44,'yellow'],[-58,-44,'pink'],[0,-44,'blue']]},
-        {s:['t',210,130,60], x:196,y:500,r:0, col:'#FFC8A0', z:2, sc:[[-70,-32,'pink'],[70,-32,'purple']]},
-        {s:['u',200,120,54], x:196,y:548,r:0, col:'#D0B8F0', z:1, sc:[[-70,-26,'blue'],[70,-26,'cyan']]},
-        {s:['hex',64], x:96,y:548,r:0, col:'#A8E8C0', z:0, sc:[[-22,-12,'green'],[22,-12,'brown']]}
+        {s:['plus',90,58], x:196,y:300,r:0.15, col:'#FFE56A', z:6, sc:[[0,-56,'green'],[56,0,'brown'],[0,56,'purple'],[-56,0,'cyan']]},
+        {s:['star',88], x:196,y:404,r:0.2, col:'#FFB0D0', z:5, sc:[[0,-32,'brown'],[30,14,'yellow'],[-30,14,'pink'],[22,-16,'blue'],[-20,-16,'green']]},
+        {s:['l',180,162,68,false], x:104,y:312,r:-0.25, col:'#7FE0F0', z:4, sc:[[-62,-44,'purple'],[60,-44,'yellow'],[0,-44,'cyan']]},
+        {s:['l',180,162,68,true], x:288,y:312,r:0.25, col:'#C0EC70', z:3, sc:[[62,-44,'yellow'],[-60,-44,'pink'],[0,-44,'blue']]},
+        {s:['t',214,132,60], x:196,y:500,r:0, col:'#FFC8A0', z:2, sc:[[-72,-32,'pink'],[72,-32,'purple']]},
+        {s:['u',204,122,54], x:196,y:548,r:0, col:'#D0B8F0', z:1, sc:[[-70,-26,'blue'],[70,-26,'cyan']]},
+        {s:['blob',78,66,0], x:92,y:548,r:0.1, col:'#A8E8C0', z:0, sc:[[-20,-6,'green'],[20,-6,'brown']]}
       ],
       glass:[
-        {s:['rect',180,66], x:196,y:500,r:0},
-        {s:['rect',160,56], x:196,y:548,r:0}
+        {s:['t',170,90,50], x:196,y:500,r:0},
+        {s:['u',160,90,46], x:196,y:548,r:0}
       ]
     },
-    { // 13 接近 87 关密度
+    { // 13 八色，接近 87 关密度
       slots:2, items:{add:2,clear:2,melt:1,unlock:1},
       queue:['green','brown','yellow','purple','cyan','pink','orange','blue'],
       boards:[
-        {s:['l',198,178,74,true], x:116,y:322,r:-0.58, col:'#7FE0F0', z:6, sc:[[-68,-50,'green'],[66,-50,'brown'],[0,-50,'yellow'],[58,56,'purple']]},
-        {s:['star',96], x:196,y:405,r:0.08, col:'#FFB0D0', z:5, sc:[[0,-33,'brown'],[31,12,'green'],[-31,12,'cyan'],[20,-16,'pink'],[-20,-16,'orange']]},
-        {s:['l',198,178,74,false], x:276,y:322,r:0.58, col:'#C0EC70', z:4, sc:[[68,-50,'yellow'],[-66,-50,'blue'],[0,-50,'purple'],[-58,56,'brown']]},
-        {s:['l',182,156,68,false], x:116,y:518,r:0.2, col:'#FFE56A', z:3, sc:[[-62,-42,'cyan'],[58,-42,'pink'],[0,-42,'blue'],[-52,48,'green']]},
-        {s:['l',182,156,68,true], x:276,y:518,r:-0.2, col:'#D0B8F0', z:2, sc:[[62,-42,'orange'],[-58,-42,'yellow'],[0,-42,'cyan']]},
-        {s:['plus',70,50], x:196,y:330,r:0.3, col:'#FFC8A0', z:1, sc:[[0,-44,'blue'],[44,0,'orange']]},
-        {s:['hex',70], x:196,y:548,r:0, col:'#A8E8C0', z:0, sc:[[-24,-14,'pink'],[24,-14,'purple']]}
+        {s:['l',200,180,76,true], x:114,y:322,r:-0.58, col:'#7FE0F0', z:6, sc:[[-68,-50,'green'],[66,-50,'brown'],[0,-50,'yellow'],[58,56,'purple']]},
+        {s:['star',102], x:196,y:408,r:0.08, col:'#FFE56A', z:5, sc:[[0,-38,'brown'],[34,14,'green'],[-34,14,'cyan'],[24,-18,'pink'],[-24,-18,'orange']]},
+        {s:['l',200,180,76,false], x:278,y:322,r:0.58, col:'#C0EC70', z:4, sc:[[68,-50,'yellow'],[-66,-50,'blue'],[0,-50,'purple'],[-58,56,'brown']]},
+        {s:['l',186,160,70,false], x:114,y:522,r:0.20, col:'#FFB0D0', z:3, sc:[[-64,-44,'cyan'],[60,-44,'pink'],[0,-44,'blue'],[-54,50,'green']]},
+        {s:['l',186,160,70,true], x:278,y:522,r:-0.20, col:'#D0B8F0', z:2, sc:[[64,-44,'orange'],[-62,-44,'yellow'],[0,-44,'cyan']]},
+        {s:['plus',72,50], x:196,y:312,r:0.3, col:'#FFC8A0', z:1, sc:[[0,-48,'blue'],[48,0,'orange']]},
+        {s:['blob',86,72,2], x:196,y:548,r:0, col:'#B8C8E0', z:0, sc:[[-26,-6,'pink'],[26,-6,'purple']]}
       ],
       glass:[
-        {s:['rect',130,70], x:196,y:330,r:0.3},
-        {s:['hex',78], x:196,y:548,r:0}
+        {s:['plus',70,48], x:196,y:312,r:0.3},
+        {s:['blob',70,58,2], x:196,y:548,r:0}
       ]
     },
-    { // 14 八色队列，两槽非常紧
+    { // 14 八色，八块板
       slots:2, items:{add:2,clear:2,melt:1,unlock:1},
       queue:['green','brown','purple','yellow','pink','cyan','blue','orange'],
       boards:[
-        {s:['star',88], x:196,y:348,r:-0.2, col:'#FFB0D0', z:7, sc:[[0,-30,'green'],[28,10,'brown'],[-28,10,'purple'],[18,-14,'yellow'],[-18,-14,'pink']]},
-        {s:['plus',84,56], x:196,y:348,r:0.5, col:'#FFE56A', z:6, sc:[[0,-54,'brown'],[54,0,'green'],[0,54,'cyan'],[-54,0,'blue']]},
-        {s:['l',188,168,70,false], x:102,y:300,r:-0.32, col:'#7FE0F0', z:5, sc:[[-64,-46,'purple'],[62,-46,'yellow'],[0,-46,'orange']]},
-        {s:['l',188,168,70,true], x:290,y:300,r:0.32, col:'#C0EC70', z:4, sc:[[64,-46,'yellow'],[-62,-46,'pink'],[0,-46,'cyan']]},
-        {s:['t',216,136,62], x:196,y:488,r:0, col:'#FFC8A0', z:3, sc:[[-74,-34,'pink'],[74,-34,'blue'],[0,-34,'orange']]},
+        {s:['star',92], x:196,y:348,r:-0.2, col:'#FFB0D0', z:7, sc:[[0,-34,'green'],[30,12,'brown'],[-30,12,'purple'],[20,-16,'yellow'],[-20,-16,'pink']]},
+        {s:['plus',86,56], x:196,y:348,r:0.5, col:'#FFE56A', z:6, sc:[[0,-56,'brown'],[54,0,'green'],[0,54,'cyan'],[-54,0,'blue']]},
+        {s:['l',190,170,72,false], x:100,y:300,r:-0.32, col:'#7FE0F0', z:5, sc:[[-64,-46,'purple'],[62,-46,'yellow'],[0,-46,'orange']]},
+        {s:['l',190,170,72,true], x:292,y:300,r:0.32, col:'#C0EC70', z:4, sc:[[64,-46,'yellow'],[-62,-46,'pink'],[0,-46,'cyan']]},
+        {s:['t',216,136,62], x:196,y:490,r:0, col:'#FFC8A0', z:3, sc:[[-74,-34,'pink'],[74,-34,'blue'],[0,-34,'orange']]},
         {s:['u',208,124,54], x:196,y:548,r:0, col:'#D0B8F0', z:2, sc:[[-72,-28,'cyan'],[72,-28,'purple']]},
-        {s:['hex',64], x:90,y:548,r:0.1, col:'#A8E8C0', z:1, sc:[[-22,-12,'blue'],[22,-12,'brown']]},
-        {s:['hex',64], x:302,y:548,r:-0.1, col:'#7FE0F0', z:0, sc:[[-22,-12,'orange'],[22,-12,'green']]}
+        {s:['petal',68,60,5,0.58], x:88,y:548,r:0.1, col:'#A8E8C0', z:1, sc:[[-16,0,'blue'],[18,-4,'brown']]},
+        {s:['hex',66], x:304,y:548,r:-0.1, col:'#B8C8E0', z:0, sc:[[-20,-8,'orange'],[20,-10,'green']]}
       ],
       glass:[
-        {s:['rect',190,68], x:196,y:488,r:0},
-        {s:['rect',180,56], x:196,y:548,r:0}
+        {s:['t',180,90,52], x:196,y:490,r:0},
+        {s:['u',170,90,46], x:196,y:548,r:0}
       ]
     },
-    { // 15 最难，层层叠叠接近参考图
+    { // 15 最接近参考图的层层叠叠
       slots:2, items:{add:2,clear:2,melt:1,unlock:1},
       queue:['green','brown','purple','yellow','pink','cyan','blue','orange'],
       boards:[
-        {s:['l',200,180,76,true], x:114,y:320,r:-0.6, col:'#7FE0F0', z:7, sc:[[-70,-50,'green'],[68,-50,'brown'],[0,-50,'purple'],[60,58,'cyan']]},
-        {s:['star',98], x:196,y:408,r:0.18, col:'#FFB0D0', z:6, sc:[[0,-34,'brown'],[32,12,'green'],[-32,12,'yellow'],[20,-16,'pink'],[-20,-16,'orange']]},
-        {s:['l',200,180,76,false], x:278,y:320,r:0.6, col:'#C0EC70', z:5, sc:[[70,-50,'purple'],[-68,-50,'yellow'],[0,-50,'blue'],[-60,58,'cyan']]},
-        {s:['l',186,160,70,false], x:114,y:520,r:0.22, col:'#FFE56A', z:4, sc:[[-64,-44,'yellow'],[60,-44,'pink'],[0,-44,'blue']]},
-        {s:['l',186,160,70,true], x:278,y:520,r:-0.22, col:'#D0B8F0', z:3, sc:[[64,-44,'pink'],[88,8,'purple']]},
-        {s:['plus',74,52], x:196,y:300,r:0.25, col:'#FFC8A0', z:2, sc:[[0,-46,'cyan'],[46,0,'orange']]},
-        {s:['t',200,120,56], x:196,y:500,r:3.1416, col:'#A8E8C0', z:1, sc:[[-66,-32,'blue'],[66,-32,'green']]},
-        {s:['hex',72], x:196,y:548,r:0, col:'#FFE56A', z:0, sc:[[-26,-14,'orange'],[26,-14,'brown']]}
+        {s:['l',204,184,76,true], x:112,y:322,r:-0.60, col:'#7FE0F0', z:7, sc:[[-70,-52,'green'],[72,-52,'brown'],[0,-52,'purple'],[56,62,'cyan']]},
+        {s:['star',108], x:196,y:412,r:0.18, col:'#FFE56A', z:6, sc:[[0,-42,'brown'],[36,14,'green'],[-36,14,'yellow'],[22,-18,'pink'],[-28,-20,'orange']]},
+        {s:['l',204,184,76,false], x:280,y:322,r:0.60, col:'#C0EC70', z:5, sc:[[70,-52,'purple'],[-70,-52,'yellow'],[0,-52,'blue'],[-56,62,'cyan']]},
+        {s:['l',188,162,70,false], x:112,y:522,r:0.22, col:'#FFB0D0', z:4, sc:[[-64,-44,'yellow'],[60,-44,'pink'],[0,-44,'blue']]},
+        {s:['l',188,162,70,true], x:280,y:522,r:-0.22, col:'#D0B8F0', z:3, sc:[[64,-44,'pink'],[70,8,'purple']]},
+        {s:['plus',76,52], x:196,y:300,r:0.25, col:'#FFC8A0', z:2, sc:[[0,-50,'cyan'],[50,0,'orange']]},
+        {s:['petal',88,76,5,0.56], x:196,y:500,r:0.2, col:'#A8E8C0', z:1, sc:[[-30,-16,'blue'],[30,-16,'green']]},
+        {s:['blob',92,78,0], x:196,y:548,r:0, col:'#B8C8E0', z:0, sc:[[-28,-4,'orange'],[28,-4,'brown']]}
       ],
       glass:[
-        {s:['rect',140,64], x:196,y:300,r:0.25},
-        {s:['rect',180,64], x:196,y:500,r:3.1416},
-        {s:['hex',80], x:196,y:548,r:0}
+        {s:['plus',72,48], x:196,y:300,r:0.25},
+        {s:['petal',70,60,5,0.56], x:196,y:500,r:0.2},
+        {s:['blob',80,68,0], x:196,y:548,r:0}
       ]
     }
   ];
@@ -416,9 +474,10 @@ button.ghost{
   let items={add:0,clear:0,melt:0,unlock:0};
   let glassMelted=false;
   let armed=null;
+  let holdCount=HOLD_START, holds=[];
   let flies=[], falls=[], sparks=[];
   let toastT=0, toastMsg='';
-  let last=0, idleT=0, winPending=false;
+  let last=0, idleT=0, winPending=false, failPending=false;
 
   function worldBoard(b){ return xform(b.poly, b.x, b.y, b.r); }
 
@@ -426,11 +485,24 @@ button.ghost{
     if(s.removed) return true;
     for(const b of boards){
       if(b.removed || b.z<=s.z) continue;
-      if(pip(s.x, s.y, worldBoard(b))) return true;
+      if(circleHitsPoly(s.x, s.y, BLOCK_R, worldBoard(b))) return true;
     }
     if(!glassMelted){
       for(const g of glass){
-        if(pip(s.x, s.y, g.poly)) return true;
+        if(circleHitsPoly(s.x, s.y, GLASS_R, g.poly)) return true;
+      }
+    }
+    return false;
+  }
+  // Click lands on a higher board or unmelted glass (including their outlines).
+  function tapOnHigherCover(x,y,z){
+    for(const b of boards){
+      if(b.removed || b.z<=z) continue;
+      if(circleHitsPoly(x, y, BOARD_STROKE, worldBoard(b))) return true;
+    }
+    if(!glassMelted){
+      for(const g of glass){
+        if(circleHitsPoly(x, y, GLASS_STROKE, g.poly)) return true;
       }
     }
     return false;
@@ -445,6 +517,19 @@ button.ghost{
     const n=maxShow;
     const gap=88, total=n*gap, x0=(W-total)/2+gap/2;
     return Array.from({length:n},(_,i)=>({x:x0+i*gap, y:108}));
+  }
+  function holdLayout(){
+    const n=holdCount, total=n*HOLD_GAP, x0=(W-total)/2+HOLD_GAP/2;
+    return Array.from({length:n},(_,i)=>({x:x0+i*HOLD_GAP, y:HOLD_Y}));
+  }
+  function compactHolds(){
+    if(holds.some(h=>h && h.incoming)) return;
+    const kept=holds.filter(h=>h);
+    while(kept.length<holdCount) kept.push(null);
+    holds=kept.slice(0, holdCount);
+  }
+  function freeHoldIndex(){
+    return holds.findIndex(h=>!h);
   }
 
   function syncItems(){
@@ -471,12 +556,12 @@ button.ghost{
     const L=LEVELS[i];
     boards=L.boards.map((b,bi)=>{
       const poly=makeShape(b.s);
-      return { id:bi, poly, x:b.x, y:b.y, r:b.r||0, col:b.col, z:b.z, removed:false, fall:0 };
+      return { id:bi, poly, x:b.x, y:b.y, r:b.r||0, col:b.col, z:b.z, removed:false, fall:0, s:b.s };
     });
     screws=[];
     L.boards.forEach((b,bi)=>{
       const c=Math.cos(b.r||0), s=Math.sin(b.r||0);
-      b.sc.forEach((sc,si)=>{
+      b.sc.forEach((sc)=>{
         const lx=sc[0], ly=sc[1];
         screws.push({
           id:screws.length, bid:bi, z:b.z,
@@ -485,22 +570,24 @@ button.ghost{
         });
       });
     });
-    glass=(L.glass||[]).map(g=>({ poly:xform(makeShape(g.s), g.x, g.y, g.r||0) }));
+    glass=(L.glass||[]).map(g=>({ poly:xform(makeShape(g.s), g.x, g.y, g.r||0), s:g.s, x:g.x, y:g.y, r:g.r||0 }));
     glassMelted=false;
     queue=L.queue.map(c=>({color:c, cap:3, fill:[]}));
     slotCount=L.slots||2;
     items={add:L.items.add, clear:L.items.clear, melt:L.items.melt, unlock:L.items.unlock};
     armed=null;
+    holdCount=HOLD_START;
+    holds=Array.from({length:holdCount},()=>null);
     const pos=layoutSlots();
     slots=pos.map((p,i)=>({ x:p.x, y:p.y, box: i<slotCount && queue.length? queue.shift(): null, locked:i>=slotCount }));
-    flies=[]; falls=[]; sparks=[]; winPending=false;
+    flies=[]; falls=[]; sparks=[]; winPending=false; failPending=false;
     refreshHud();
   }
 
   function currentBoxes(){ return slots.filter(s=>s.box); }
 
   function findBoxFor(color){
-    return slots.find(s=>s.box && s.box.color===color && s.box.fill.length<s.box.cap);
+    return slots.find(s=>s.box && !s.box.leaving && s.box.color===color && s.box.fill.length<s.box.cap);
   }
 
   function holePos(slot, index, cap){
@@ -527,10 +614,27 @@ button.ghost{
   function advanceFullBoxes(){
     slots.forEach(s=>{
       if(s.box && s.box.fill.length>=s.box.cap && !s.box.leaving){
+        if(s.box.fill.some(f=>f.incoming)) return;
         s.box.leaving=true;
         s.box.leaveT=0;
       }
     });
+  }
+
+  function tryDrainHolds(){
+    const pos=holdLayout();
+    for(let i=0;i<holds.length;i++){
+      const h=holds[i];
+      if(!h || h.incoming) continue;
+      const slot=findBoxFor(h.color);
+      if(!slot) continue;
+      const idx=slot.box.fill.length;
+      const hp=holePos(slot, idx, slot.box.cap);
+      slot.box.fill.push({color:h.color, incoming:true});
+      flies.push({ color:h.color, x:pos[i].x, y:pos[i].y, x0:pos[i].x, y0:pos[i].y, x1:hp.x, y1:hp.y, t:0, slot:slot, fi:idx, fromHold:true });
+      holds[i]=null;
+    }
+    compactHolds();
   }
 
   function tickLeaving(dt){
@@ -539,14 +643,17 @@ button.ghost{
         s.box.leaveT+=(dt||0.016);
         if(s.box.leaveT>0.35){
           s.box= queue.length? queue.shift(): null;
+          tryDrainHolds();
         }
       }
     });
   }
 
+  function holdsEmpty(){ return holds.every(h=>!h); }
+
   function checkWin(){
-    if(winPending) return;
-    if(screws.every(s=>s.removed) && boards.every(b=>b.removed) && flies.length===0){
+    if(winPending || failPending || mode!=='play') return;
+    if(screws.every(s=>s.removed) && boards.every(b=>b.removed) && flies.length===0 && holdsEmpty()){
       winPending=true;
       setTimeout(onLevelWin, 350);
     }
@@ -573,6 +680,21 @@ button.ghost{
       ? ('恭喜清完所有关卡<br>已完成 <b>'+LEVELS.length+'</b> 关')
       : ('第 <b>'+(levelIdx+1)+'</b> 关完成<br>最高到达第 <b>'+best+'</b> 关');
     $('start').textContent= lastL? '再来一次':'下一关';
+    $('overlay').classList.remove('hidden');
+  }
+
+  function onLevelFail(){
+    if(failPending || mode!=='play') return;
+    failPending=true;
+    mode='fail';
+    toast('暂存已满');
+    $('playUi').classList.add('hidden');
+    $('pauseMenu').classList.add('hidden');
+    $('title').textContent='失败了';
+    $('msg').hidden=false;
+    $('msg').textContent='暂存孔位已满';
+    $('endStats').hidden=true;
+    $('start').textContent='重玩本关';
     $('overlay').classList.remove('hidden');
   }
 
@@ -606,60 +728,69 @@ button.ghost{
   function unscrew(s){
     if(s.removed || screwBlocked(s) || mode!=='play') return false;
     const slot=findBoxFor(s.color);
-    if(!slot){
-      toast('没有同色的空位');
-      s.shake=1;
+    if(slot){
+      s.removed=true;
+      const idx=slot.box.fill.length;
+      const hp=holePos(slot, idx, slot.box.cap);
+      slot.box.fill.push({color:s.color, incoming:true});
+      flies.push({ color:s.color, x:s.x, y:s.y, x0:s.x, y0:s.y, x1:hp.x, y1:hp.y, t:0, slot:slot, fi:idx });
+      maybeDropBoards();
+      refreshHud();
+      return true;
+    }
+    const hi=freeHoldIndex();
+    if(hi<0){
+      onLevelFail();
       return false;
     }
     s.removed=true;
-    const idx=slot.box.fill.length;
-    const hp=holePos(slot, idx, slot.box.cap);
-    slot.box.fill.push({color:s.color, incoming:true});
-    flies.push({ color:s.color, x:s.x, y:s.y, x0:s.x, y0:s.y, x1:hp.x, y1:hp.y, t:0, slot:slot, fi:idx });
+    const hp=holdLayout()[hi];
+    const obj={color:s.color, incoming:true};
+    holds[hi]=obj;
+    flies.push({ color:s.color, x:s.x, y:s.y, x0:s.x, y0:s.y, x1:hp.x, y1:hp.y, t:0, toHold:true, holdObj:obj });
     maybeDropBoards();
     refreshHud();
     return true;
   }
 
   function finishFly(f){
-    if(f.slot.box && f.slot.box.fill[f.fi]) f.slot.box.fill[f.fi].incoming=false;
+    if(f.toHold){
+      if(f.holdObj && f.holdObj.incoming) f.holdObj.incoming=false;
+      compactHolds();
+      tryDrainHolds();
+      checkWin();
+      return;
+    }
+    if(f.slot && f.slot.box && f.slot.box.fill[f.fi]) f.slot.box.fill[f.fi].incoming=false;
     advanceFullBoxes();
+    tryDrainHolds();
     checkWin();
   }
 
   function onCanvasTap(x,y){
     if(mode!=='play') return;
-    if(armed==='add' || armed==='clear'){
-      const hit=slots.find(s=>s.box && Math.hypot(x-s.x,y-(s.y+4))<40);
-      if(hit){
-        if(armed==='add' && items.add>0){
-          hit.box.cap+=1; items.add--; armed=null; toast('孔位 +1'); syncItems(); return;
-        }
-        if(armed==='clear' && items.clear>0){
-          hit.box.fill=[]; items.clear--; armed=null; toast('已清空盒子');
-          // after clear, if was leaving no; just empty
-          syncItems(); return;
-        }
-      } else {
-        armed=null; syncItems();
-      }
+    const locked=slots.find(s=>s.locked && Math.hypot(x-s.x,y-(s.y+4))<40);
+    if(locked && items.unlock>0){
+      locked.locked=false;
+      slotCount++;
+      if(!locked.box && queue.length) locked.box=queue.shift();
+      items.unlock--; toast('解锁了一个盒子'); syncItems();
+      tryDrainHolds();
+      return;
     }
-    if(armed==='unlock' || true){
-      const locked=slots.find(s=>s.locked && Math.hypot(x-s.x,y-(s.y+4))<40);
-      if(locked && items.unlock>0){
-        locked.locked=false;
-        slotCount++;
-        if(!locked.box && queue.length) locked.box=queue.shift();
-        items.unlock--; toast('解锁了一个盒子'); syncItems(); return;
-      }
-    }
+    const TAP_R=SR+6;
     let bestS=null, bestD=1e9;
     screws.forEach(s=>{
       if(s.removed) return;
       const d=Math.hypot(x-s.x,y-s.y);
-      if(d<SR+10 && d<bestD){ bestD=d; bestS=s; }
+      if(d<TAP_R && d<bestD){ bestD=d; bestS=s; }
     });
-    if(bestS) unscrew(bestS);
+    if(!bestS) return;
+    if(screwBlocked(bestS) || tapOnHigherCover(x,y,bestS.z)){
+      toast('被挡住了');
+      return;
+    }
+    unscrew(bestS);
   }
 
   function canvasPos(e){
@@ -669,7 +800,7 @@ button.ghost{
   }
 
   /* ---------- solvability ---------- */
-  function snapshotSolvable(useItems){
+  function snapshotSolvable(useItems, useCenter){
     const n=screws.length;
     const boardZ=boards.map(b=>b.z);
     const boardPoly=boards.map(b=>worldBoard(b));
@@ -677,113 +808,121 @@ button.ghost{
     const screwData=screws.map(s=>({x:s.x,y:s.y,z:s.z,bid:s.bid,color:s.color}));
     const colors=screwData.map(s=>s.color);
     const initMask=(1<<n)-1;
-    const q0=queue.map(b=>({color:b.color,cap:b.cap,fill:b.fill.length}));
-    // include current slots boxes at front
     const initialQueue=[];
     slots.forEach(s=>{ if(s.box) initialQueue.push({color:s.box.color,cap:s.box.cap,fill:s.box.fill.length}); });
-    q0.forEach(b=>initialQueue.push({color:b.color,cap:b.cap,fill:b.fill}));
+    queue.forEach(b=>initialQueue.push({color:b.color,cap:b.cap,fill:b.fill.length}));
     const startSlots=slotCount;
     const startItems=useItems? {add:items.add,clear:items.clear,melt:items.melt,unlock:items.unlock}:{add:0,clear:0,melt:0,unlock:0};
+    const startHolds=holds.filter(h=>h).map(h=>h.color);
+    const startHCap=holdCount;
 
     function blocked(mask, melt, sid){
       const s=screwData[sid];
       for(let bi=0;bi<boards.length;bi++){
         if(boardZ[bi]<=s.z) continue;
-        // board present if any of its screws remain
         let alive=false;
         for(let i=0;i<n;i++) if(screwData[i].bid===bi && (mask&(1<<i))) {alive=true;break;}
         if(!alive) continue;
-        if(pip(s.x,s.y,boardPoly[bi])) return true;
+        if(useCenter ? pip(s.x,s.y,boardPoly[bi]) : circleHitsPoly(s.x,s.y,BLOCK_R,boardPoly[bi])) return true;
       }
       if(!melt){
-        for(const g of glassPolys) if(pip(s.x,s.y,g)) return true;
+        for(const g of glassPolys) if(useCenter ? pip(s.x,s.y,g) : circleHitsPoly(s.x,s.y,GLASS_R,g)) return true;
       }
       return false;
     }
 
     const memo=new Map();
-    let nodes=0, nodeLimit=2000000, timedOut=false;
-    function key(mask, qHead, slotState, melt, sc, it){
-      return mask.toString(16)+'|'+qHead+'|'+slotState+'|'+melt+'|'+sc+'|'+it;
-    }
+    let nodes=0, nodeLimit=4000000, timedOut=false;
     function packSlots(sl){
       return sl.map(b=>b? (b.color+':'+b.fill+'/'+b.cap): '.').join(',');
     }
     function packIt(it){ return it.add+','+it.clear+','+it.melt+','+it.unlock; }
+    function packHolds(hs, cap){
+      return cap+':'+hs.slice().sort().join(',');
+    }
+    function key(mask, sl, qrest, melt, it, hs, hcap){
+      return mask.toString(16)+'|'+packSlots(sl)+'|'+qrest.map(b=>b.color+b.cap+b.fill).join('')+'|'+ (melt?1:0) +'|'+packIt(it)+'|'+packHolds(hs,hcap);
+    }
+    function cloneQ(q){ return q.map(b=>({color:b.color,cap:b.cap,fill:b.fill})); }
+    function cloneSl(sl){ return sl.map(b=>b? Object.assign({},b):null); }
 
-    function fillSlots(qHead, slc, qAll){
-      const sl=[];
-      let h=qHead;
-      for(let i=0;i<slc;i++){
-        sl.push(h<qAll.length? Object.assign({}, qAll[h++]): null);
+    function drain(sl, qr, hs){
+      let changed=true;
+      while(changed){
+        changed=false;
+        for(let i=0;i<hs.length;i++){
+          const si=sl.findIndex(b=>b && b.color===hs[i] && b.fill<b.cap);
+          if(si<0) continue;
+          sl[si].fill++;
+          hs.splice(i,1);
+          i--;
+          changed=true;
+          if(sl[si].fill>=sl[si].cap){
+            sl[si]= qr.length? qr.shift(): null;
+          }
+        }
       }
-      // this is wrong for mid-game because qHead isn't how slots work once some are partial
-      return sl;
     }
 
-    // Better state: remaining mask, array of current slot boxes (color,cap,fill) length=slotCount, remaining queue array, melt, items
-    function cloneQ(q){ return q.map(b=>({color:b.color,cap:b.cap,fill:b.fill})); }
-
-    function rec(mask, sl, qrest, melt, it){
-      if(mask===0) return true;
+    function rec(mask, sl, qrest, melt, it, hs, hcap){
+      if(mask===0 && hs.length===0) return true;
       if(++nodes>nodeLimit){ timedOut=true; return false; }
-      const k=key(mask, qrest.map(b=>b.color+b.cap+b.fill).join(''), packSlots(sl), melt?1:0, sl.length, packIt(it));
+      const k=key(mask, sl, qrest, melt, it, hs, hcap);
       if(memo.has(k)) return memo.get(k);
-      const legal=[];
+
+      const boxMoves=[], holdMoves=[];
       for(let i=0;i<n;i++){
         if(!(mask&(1<<i))) continue;
         if(blocked(mask,melt,i)) continue;
         const col=colors[i];
         const si=sl.findIndex(b=>b && b.color===col && b.fill<b.cap);
-        if(si>=0) legal.push([i,si]);
+        if(si>=0) boxMoves.push([i,si]);
+        else if(hs.length<hcap) holdMoves.push(i);
       }
-      function afterPlace(nmask, sl2, qr2){
-        // drop boards already handled via blocked()
-        sl2=sl2.map(b=>b? Object.assign({},b):null);
-        qr2=cloneQ(qr2);
-        for(let i=0;i<sl2.length;i++){
-          if(sl2[i] && sl2[i].fill>=sl2[i].cap){
-            sl2[i]= qr2.length? qr2.shift(): null;
-          }
-        }
-        return rec(nmask, sl2, qr2, melt, it);
-      }
-      legal.sort((a,b)=>{
+      boxMoves.sort((a,b)=>{
         const da=sl[a[1]].fill+1>=sl[a[1]].cap?0:1;
         const db=sl[b[1]].fill+1>=sl[b[1]].cap?0:1;
         return da-db;
       });
-      for(const [sid,si] of legal){
-        const sl2=sl.map(b=>b? Object.assign({},b):null);
+
+      function go(nmask, sl2, qr2, it2, hs2, hcap2, melt2){
+        drain(sl2, qr2, hs2);
+        if(rec(nmask, sl2, qr2, melt2, it2, hs2, hcap2)){ memo.set(k,true); return true; }
+        return false;
+      }
+
+      for(const [sid,si] of boxMoves){
+        const sl2=cloneSl(sl), qr2=cloneQ(qrest), hs2=hs.slice();
         sl2[si].fill++;
-        if(afterPlace(mask^(1<<sid), sl2, qrest)) { memo.set(k,true); return true; }
+        if(sl2[si].fill>=sl2[si].cap) sl2[si]= qr2.length? qr2.shift(): null;
+        if(go(mask^(1<<sid), sl2, qr2, it, hs2, hcap, melt)) return true;
+      }
+      for(const sid of holdMoves){
+        const sl2=cloneSl(sl), qr2=cloneQ(qrest), hs2=hs.slice();
+        hs2.push(colors[sid]);
+        if(go(mask^(1<<sid), sl2, qr2, it, hs2, hcap, melt)) return true;
+      }
+      if(mask===0 && hs.length>0 && it.clear>0){
+        const it2=Object.assign({},it,{clear:it.clear-1});
+        if(go(0, cloneSl(sl), cloneQ(qrest), it2, [], hcap, melt)) return true;
       }
       if(it.melt>0 && !melt && glassPolys.length){
         const it2=Object.assign({},it,{melt:it.melt-1});
-        if(rec(mask, sl.map(b=>b&&Object.assign({},b)), cloneQ(qrest), true, it2)){ memo.set(k,true); return true; }
+        if(go(mask, cloneSl(sl), cloneQ(qrest), it2, hs.slice(), hcap, true)) return true;
       }
       if(it.unlock>0 && sl.length<4){
         const it2=Object.assign({},it,{unlock:it.unlock-1});
-        const sl2=sl.map(b=>b&&Object.assign({},b));
-        const qr2=cloneQ(qrest);
+        const sl2=cloneSl(sl), qr2=cloneQ(qrest), hs2=hs.slice();
         sl2.push(qr2.length? qr2.shift(): null);
-        if(rec(mask, sl2, qr2, melt, it2)){ memo.set(k,true); return true; }
+        if(go(mask, sl2, qr2, it2, hs2, hcap, melt)) return true;
       }
-      if(it.add>0){
-        for(let i=0;i<sl.length;i++) if(sl[i]){
-          const it2=Object.assign({},it,{add:it.add-1});
-          const sl2=sl.map(b=>b&&Object.assign({},b));
-          sl2[i].cap++;
-          if(rec(mask, sl2, cloneQ(qrest), melt, it2)){ memo.set(k,true); return true; }
-        }
+      if(it.add>0 && hcap<HOLD_MAX){
+        const it2=Object.assign({},it,{add:it.add-1});
+        if(go(mask, cloneSl(sl), cloneQ(qrest), it2, hs.slice(), hcap+1, melt)) return true;
       }
-      if(it.clear>0){
-        for(let i=0;i<sl.length;i++) if(sl[i] && sl[i].fill>0){
-          const it2=Object.assign({},it,{clear:it.clear-1});
-          const sl2=sl.map(b=>b&&Object.assign({},b));
-          sl2[i].fill=0;
-          if(rec(mask, sl2, cloneQ(qrest), melt, it2)){ memo.set(k,true); return true; }
-        }
+      if(it.clear>0 && hs.length>0 && mask!==0){
+        const it2=Object.assign({},it,{clear:it.clear-1});
+        if(go(mask, cloneSl(sl), cloneQ(qrest), it2, [], hcap, melt)) return true;
       }
       memo.set(k,false);
       return false;
@@ -791,7 +930,7 @@ button.ghost{
 
     const sl=[], qrest=cloneQ(initialQueue);
     for(let i=0;i<startSlots;i++) sl.push(qrest.length? qrest.shift(): null);
-    const ok=rec(initMask, sl, qrest, false, startItems);
+    const ok=rec(initMask, sl, qrest, false, startItems, startHolds.slice(), startHCap);
     return {ok, nodes, timeout:timedOut, memo:memo.size};
   }
 
@@ -817,11 +956,35 @@ button.ghost{
     }
   }
 
-  function roundPoly(poly, width, fill, stroke){
+  function roundedPath(poly, rad){
+    const n=poly.length;
+    if(n<3) return;
+    const pts=[];
+    for(let i=0;i<n;i++){
+      const p0=poly[(i-1+n)%n], p1=poly[i], p2=poly[(i+1)%n];
+      const d01=Math.hypot(p1[0]-p0[0], p1[1]-p0[1])||1e-6;
+      const d12=Math.hypot(p2[0]-p1[0], p2[1]-p1[1])||1e-6;
+      const r=Math.min(rad, d01*0.45, d12*0.45);
+      pts.push({
+        x1:p1[0]+(p0[0]-p1[0])*r/d01,
+        y1:p1[1]+(p0[1]-p1[1])*r/d01,
+        ax:p1[0], ay:p1[1],
+        x2:p1[0]+(p2[0]-p1[0])*r/d12,
+        y2:p1[1]+(p2[1]-p1[1])*r/d12
+      });
+    }
     ctx.beginPath();
-    ctx.moveTo(poly[0][0], poly[0][1]);
-    for(let i=1;i<poly.length;i++) ctx.lineTo(poly[i][0], poly[i][1]);
+    ctx.moveTo(pts[0].x1, pts[0].y1);
+    for(let i=0;i<n;i++){
+      const t=pts[i], nx=pts[(i+1)%n];
+      ctx.quadraticCurveTo(t.ax, t.ay, t.x2, t.y2);
+      ctx.lineTo(nx.x1, nx.y1);
+    }
     ctx.closePath();
+  }
+
+  function roundPoly(poly, width, fill, stroke, rad){
+    roundedPath(poly, rad==null?16:rad);
     if(fill){ ctx.fillStyle=fill; ctx.fill(); }
     if(stroke){
       ctx.lineJoin='round'; ctx.lineCap='round';
@@ -840,15 +1003,16 @@ button.ghost{
       ctx.globalAlpha=1-t;
     }
     const poly=worldBoard(b);
+    const kind=b.s && b.s[0];
+    const rad= (kind==='star'||kind==='plus') ? 10 : 16;
     ctx.save();
-    ctx.shadowColor='rgba(40,60,80,.22)'; ctx.shadowBlur=12; ctx.shadowOffsetY=5;
-    roundPoly(poly, 16, b.col, null);
+    ctx.shadowColor='rgba(40,60,80,.18)'; ctx.shadowBlur=10; ctx.shadowOffsetY=4;
+    roundPoly(poly, 16, hexRgba(b.col, 0.74), null, rad);
     ctx.restore();
-    roundPoly(poly, 14, null, '#fff');
-    // screw holes
+    roundPoly(poly, 14, null, '#fff', rad);
     screws.filter(s=>s.bid===b.id).forEach(s=>{
       ctx.beginPath(); ctx.arc(s.x,s.y, SR-1, 0, Math.PI*2);
-      ctx.fillStyle='rgba(60,50,40,.2)'; ctx.fill();
+      ctx.fillStyle='rgba(60,50,40,.18)'; ctx.fill();
     });
     ctx.restore();
   }
@@ -880,14 +1044,34 @@ button.ghost{
     if(glassMelted) return;
     glass.forEach(g=>{
       ctx.save();
-      ctx.globalAlpha=0.38;
-      roundPoly(g.poly, 8, 'rgba(190,230,255,0.9)', 'rgba(255,255,255,0.9)');
+      ctx.globalAlpha=0.42;
+      roundPoly(g.poly, 8, 'rgba(190,230,255,0.9)', 'rgba(255,255,255,0.95)', 14);
       ctx.globalAlpha=0.22;
       ctx.strokeStyle='#fff'; ctx.lineWidth=2;
       const p=g.poly[0];
       ctx.beginPath(); ctx.moveTo(p[0]+8,p[1]+6); ctx.lineTo(p[0]+28,p[1]+18); ctx.stroke();
       ctx.restore();
     });
+  }
+
+  function drawHolds(){
+    const pos=holdLayout(), n=holdCount;
+    const pad=26, w=n*HOLD_GAP+pad, h=40;
+    const x=W/2-w/2, y=HOLD_Y-h/2;
+    ctx.save();
+    ctx.shadowColor='rgba(40,70,100,.12)'; ctx.shadowBlur=8; ctx.shadowOffsetY=2;
+    roundRectPath(x,y,w,h,h/2);
+    ctx.fillStyle='rgba(255,255,255,.92)'; ctx.fill();
+    ctx.shadowColor='transparent';
+    ctx.lineWidth=2; ctx.strokeStyle='rgba(186,210,228,.95)'; ctx.stroke();
+    pos.forEach((p,i)=>{
+      ctx.beginPath(); ctx.arc(p.x,p.y,HOLD_R,0,Math.PI*2);
+      ctx.fillStyle='rgba(70,90,110,.16)'; ctx.fill();
+      ctx.lineWidth=2; ctx.strokeStyle='rgba(255,255,255,.95)'; ctx.stroke();
+      const hld=holds[i];
+      if(hld && !hld.incoming) drawScrewHead(p.x, p.y, hld.color, 0, 0.72, 0);
+    });
+    ctx.restore();
   }
 
   function drawBox(slot){
@@ -899,7 +1083,6 @@ button.ghost{
       ctx.globalAlpha=1-Math.min(1,slot.box.leaveT/0.35);
     }
     if(slot.locked && !slot.box){
-      // mint locked
       ctx.strokeStyle='#9ee0d8'; ctx.lineWidth=4; ctx.lineCap='round';
       ctx.beginPath(); ctx.moveTo(-14,-46); ctx.quadraticCurveTo(0,-62,14,-46); ctx.stroke();
       roundRectPath(-34,-42,68,70,14);
@@ -920,7 +1103,6 @@ button.ghost{
     roundRectPath(-36,-42,72,74,16);
     ctx.fillStyle=col; ctx.fill();
     ctx.lineWidth=4; ctx.strokeStyle='#fff'; ctx.stroke();
-    // holes
     const cap=slot.box.cap;
     for(let i=0;i<cap;i++){
       const hp=holePos({x:0,y:8}, i, cap);
@@ -945,13 +1127,13 @@ button.ghost{
   }
 
   function drawQueueDots(){
-    const left=queue.length;
-    const n=left+1;
-    const x0=W/2-(n-1)*9;
+    const n=queue.length;
+    if(!n) return;
+    const x0=W/2-(n-1)*8;
     ctx.save();
-    for(let i=0;i<Math.min(8, n+2);i++){
-      ctx.beginPath(); ctx.arc(x0+i*18, 164, 4, 0, Math.PI*2);
-      ctx.fillStyle=i<1? '#8aa0b5':'#d3deea';
+    for(let i=0;i<n;i++){
+      ctx.beginPath(); ctx.arc(x0+i*16, 214, 3.2, 0, Math.PI*2);
+      ctx.fillStyle=i===0? '#8aa0b5':'#d3deea';
       ctx.fill();
     }
     ctx.restore();
@@ -959,17 +1141,19 @@ button.ghost{
 
   function draw(){
     drawBg();
-    // boxes area
     slots.forEach(drawBox);
+    drawHolds();
     drawQueueDots();
     const order=boards.slice().sort((a,b)=>a.z-b.z);
-    order.forEach(drawBoard);
-    drawGlass();
-    screws.forEach(s=>{
-      if(s.removed) return;
-      if(screwBlocked(s)) return;
-      drawScrewHead(s.x,s.y,s.color,0,1,s.shake);
+    order.forEach(b=>{
+      drawBoard(b);
+      if(b.removed && (!falls.some(f=>f.b===b) || (falls.find(f=>f.b===b)||{}).t>1)) return;
+      screws.forEach(s=>{
+        if(s.removed || s.bid!==b.id) return;
+        drawScrewHead(s.x,s.y,s.color,0,1,s.shake);
+      });
     });
+    drawGlass();
     flies.forEach(f=>{
       const t=ease(Math.min(1,f.t));
       const x=lerp(f.x0,f.x1,t);
@@ -1030,6 +1214,7 @@ button.ghost{
     const txt=$('start').textContent;
     if(txt==='下一关') startPlay(levelIdx+1);
     else if(txt==='再来一次'){ nextLevel=1; store.set('screwPuzzleNext','1'); startPlay(0); }
+    else if(txt==='重玩本关') startPlay(levelIdx);
     else startPlay(Math.max(0, Math.min(LEVELS.length-1, nextLevel-1)));
   });
   $('start').addEventListener('touchend', e=>{ e.preventDefault(); $('start').click(); }, {passive:false});
@@ -1049,21 +1234,36 @@ button.ghost{
     $('pauseMenu').classList.add('hidden'); showHome();
   });
 
-  $('itAdd').addEventListener('click', ()=>{
-    if(mode!=='play' || items.add<=0) return;
-    armed = armed==='add'? null:'add'; syncItems();
-    if(armed==='add') toast('点一个盒子加孔');
-  });
-  $('itClear').addEventListener('click', ()=>{
-    if(mode!=='play' || items.clear<=0) return;
-    armed = armed==='clear'? null:'clear'; syncItems();
-    if(armed==='clear') toast('点一个盒子清空');
-  });
-  $('itMelt').addEventListener('click', ()=>{
-    if(mode!=='play' || items.melt<=0) return;
-    if(glassMelted || !glass.length){ toast('这一关没有玻璃'); return; }
+  function useAdd(){
+    if(mode!=='play' || items.add<=0) return false;
+    if(holdCount>=HOLD_MAX){ toast('孔位已达上限'); return false; }
+    items.add--;
+    holdCount++;
+    holds.push(null);
+    syncItems();
+    toast('孔位 +1');
+    return true;
+  }
+  function useClear(){
+    if(mode!=='play' || items.clear<=0) return false;
+    if(holds.every(h=>!h)){ toast('暂存是空的'); return false; }
+    holds=holds.map(()=>null);
+    items.clear--;
+    syncItems();
+    toast('已清空孔位');
+    checkWin();
+    return true;
+  }
+  function useMelt(){
+    if(mode!=='play' || items.melt<=0) return false;
+    if(glassMelted || !glass.length){ toast('这一关没有玻璃'); return false; }
     glassMelted=true; items.melt--; syncItems(); toast('玻璃已融化');
-  });
+    return true;
+  }
+
+  $('itAdd').addEventListener('click', ()=>{ useAdd(); });
+  $('itClear').addEventListener('click', ()=>{ useClear(); });
+  $('itMelt').addEventListener('click', ()=>{ useMelt(); });
 
   showHome();
   last=performance.now();
@@ -1078,32 +1278,74 @@ button.ghost{
         remaining: screws.filter(s=>!s.removed).length,
         visible: screws.filter(s=>!s.removed && !screwBlocked(s)).length,
         boxes: slots.filter(s=>s.box).map(s=>({color:s.box.color, fill:s.box.fill.length, cap:s.box.cap})),
+        holds: holds.map(h=>h?h.color:null),
+        holdCount,
         title: $('title').textContent, button: $('start').textContent,
         startVisible: $('start').offsetParent!==null && !$('overlay').classList.contains('hidden'),
-        msg: $('msg').textContent, best
+        msg: $('msg').textContent, best,
+        locked: slots.filter(s=>s.locked && !s.box).length
       };
     },
     clickLegal(){
-      const s=screws.find(s=>!s.removed && !screwBlocked(s) && findBoxFor(s.color));
+      let s=screws.find(s=>!s.removed && !screwBlocked(s) && findBoxFor(s.color));
+      if(!s) s=screws.find(s=>!s.removed && !screwBlocked(s) && freeHoldIndex()>=0);
       if(!s) return false;
       return unscrew(s);
     },
+    setLocal(i,lx,ly){
+      const s=screws[i], b=boards[s.bid];
+      const w=xform([[lx,ly]], b.x, b.y, b.r)[0];
+      s.x=w[0]; s.y=w[1];
+    },
+    tap(x,y){ onCanvasTap(x,y); },
+    blocked(i){ return screwBlocked(screws[i]); },
+    unscrewAt(i){ return unscrew(screws[i]); },
+    toastMsg(){ return toastMsg; },
+    useAdd, useClear, useMelt,
+    holdState(){ return {count:holdCount, slots:holds.map(h=>h?{color:h.color,incoming:!!h.incoming}:null)}; },
+    shapes(){ return boards.map(b=>b.s && b.s[0]); },
+    boardTints(){ return boards.map(b=>b.col); },
+    blockDetail(){
+      return screws.map((s,i)=>{
+        const byCenter=[], byCircle=[];
+        boards.forEach((b,bi)=>{
+          if(b.removed || b.z<=s.z) return;
+          if(!screws.some(t=>t.bid===bi && !t.removed)) return;
+          const poly=worldBoard(b);
+          if(pip(s.x,s.y,poly)) byCenter.push('B'+bi);
+          if(circleHitsPoly(s.x,s.y,BLOCK_R,poly)) byCircle.push('B'+bi);
+        });
+        const gC=[], gR=[];
+        if(!glassMelted){
+          glass.forEach((g,gi)=>{
+            if(pip(s.x,s.y,g.poly)) gC.push('G'+gi);
+            if(circleHitsPoly(s.x,s.y,GLASS_R,g.poly)) gR.push('G'+gi);
+          });
+        }
+        const b=boards[s.bid];
+        const dx=s.x-b.x, dy=s.y-b.y, c=Math.cos(-b.r), sn=Math.sin(-b.r);
+        const lx=dx*c-dy*sn, ly=dx*sn+dy*c;
+        return {i,c:s.color,bid:s.bid,z:s.z,x:+s.x.toFixed(1),y:+s.y.toFixed(1),
+          lx:+lx.toFixed(1),ly:+ly.toFixed(1),
+          byCenter, byCircle, gC, gR,
+          marginOnly: (byCircle.length||gR.length) && !byCenter.length && !gC.length};
+      });
+    },
     legalCount(){
-      return screws.filter(s=>!s.removed && !screwBlocked(s) && findBoxFor(s.color)).length;
+      return screws.filter(s=>!s.removed && !screwBlocked(s) && (findBoxFor(s.color) || freeHoldIndex()>=0)).length;
     },
     validate: validateScrews,
     solvable(useItems){ const r=snapshotSolvable(!!useItems); return r.ok===true; },
-    solvableInfo(useItems){ return snapshotSolvable(!!useItems); },
+    solvableInfo(useItems, useCenter){ return snapshotSolvable(!!useItems, !!useCenter); },
     boardColors(){
       return boards.map((b,bi)=>{
         const cols=screws.filter(s=>s.bid===bi).map(s=>s.color);
-        return {n:cols.length, colors:[...new Set(cols)]};
+        return {n:cols.length, colors:[...new Set(cols)], tint:b.col, shape:b.s&&b.s[0]};
       });
     },
     sampleBoard(bi, step=10){
       const b=boards[bi];
       const pts=[];
-      // local bbox guess
       for(let lx=-120; lx<=120; lx+=step){
         for(let ly=-120; ly<=120; ly+=step){
           const wp=(()=>{const p=xform([[lx,ly]], b.x, b.y, b.r)[0]; return {x:p[0], y:p[1]};})();
@@ -1112,9 +1354,9 @@ button.ghost{
           boards.forEach((ob,oi)=>{
             if(oi===bi) return;
             if(ob.z<=b.z) return;
-            if(screws.some(s=>s.bid===oi && !s.removed) && pip(wp.x,wp.y,worldBoard(ob))) over.push('B'+oi);
+            if(screws.some(s=>s.bid===oi && !s.removed) && circleHitsPoly(wp.x,wp.y,BLOCK_R,worldBoard(ob))) over.push('B'+oi);
           });
-          glass.forEach((g,gi)=>{ if(pip(wp.x,wp.y,g.poly)) over.push('G'+gi); });
+          glass.forEach((g,gi)=>{ if(circleHitsPoly(wp.x,wp.y,GLASS_R,g.poly)) over.push('G'+gi); });
           if(over.length===0) pts.push({lx,ly,x:+wp.x.toFixed(1),y:+wp.y.toFixed(1)});
         }
       }
@@ -1122,27 +1364,125 @@ button.ghost{
     },
     dump(){
       return {
-        items:{...items}, slotCount,
-        glass:glass.map(g=>({x:g.x||g,})),
+        items:{...items}, slotCount, holdCount,
+        holds:holds.map(h=>h?h.color:null),
+        glass:glass.map(g=>({s:g.s})),
         boxes:slots.filter(s=>s.box).map(s=>({color:s.box.color,fill:s.box.fill.length,cap:s.box.cap})),
+        locked:slots.filter(s=>s.locked && !s.box).length,
         queue:queue.map(b=>b.color),
-        boards:boards.map((b,bi)=>({bi, z:b.z, x:b.x, y:b.y, s:b.s})),
+        boards:boards.map((b,bi)=>({bi, z:b.z, x:b.x, y:b.y, s:b.s, col:b.col})),
         screws:screws.map((s,i)=>{
           let why=null;
           if(s.removed) why='removed';
           else if(screwBlocked(s)){
             const over=[];
             boards.forEach((b,bi)=>{
-              if(b.z>s.z && screws.some(t=>t.bid===bi && !t.removed) && pip(s.x,s.y,worldBoard(b))) over.push('B'+bi);
+              if(b.z>s.z && screws.some(t=>t.bid===bi && !t.removed) && circleHitsPoly(s.x,s.y,BLOCK_R,worldBoard(b))) over.push('B'+bi);
             });
             if(!glassMelted){
-              glass.forEach((g,gi)=>{ if(pip(s.x,s.y,g.poly)) over.push('G'+gi); });
+              glass.forEach((g,gi)=>{ if(circleHitsPoly(s.x,s.y,GLASS_R,g.poly)) over.push('G'+gi); });
             }
             why=over.join('+')||'blocked?';
           }
           return {i, c:s.color, bid:s.bid, z:s.z, x:+s.x.toFixed(1), y:+s.y.toFixed(1), why, box:!!findBoxFor(s.color)};
         })
       };
+    },
+    clipPlan(maxR=48, step=1.5){
+      const minDist=SR*2+4;
+      function localOf(s){
+        const b=boards[s.bid];
+        const dx=s.x-b.x, dy=s.y-b.y, c=Math.cos(-b.r), sn=Math.sin(-b.r);
+        return {lx:dx*c-dy*sn, ly:dx*sn+dy*c};
+      }
+      function worldOf(bid,lx,ly){
+        return xform([[lx,ly]], boards[bid].x, boards[bid].y, boards[bid].r)[0];
+      }
+      function clipsAt(s,x,y){
+        const out=[];
+        for(const b of boards){
+          if(b.removed || b.z<=s.z) continue;
+          const poly=worldBoard(b);
+          if(circleHitsPoly(x,y,BLOCK_R,poly) && !pip(x,y,poly)) out.push('B'+b.id);
+        }
+        if(!glassMelted){
+          for(let gi=0;gi<glass.length;gi++){
+            const g=glass[gi];
+            if(circleHitsPoly(x,y,GLASS_R,g.poly) && !pip(x,y,g.poly)) out.push('G'+gi);
+          }
+        }
+        return out;
+      }
+      function ok(s,x,y){
+        const own=worldBoard(boards[s.bid]);
+        if(!pip(x,y,own)) return false;
+        for(const t of screws){
+          if(t===s || t.removed || t.bid!==s.bid) continue;
+          if(Math.hypot(x-t.x,y-t.y)<minDist) return false;
+        }
+        return clipsAt(s,x,y).length===0;
+      }
+      return screws.map((s,i)=>{
+        if(s.removed) return null;
+        const cur=localOf(s);
+        const now=clipsAt(s,s.x,s.y);
+        if(!now.length) return null;
+        for(let r=step;r<=maxR;r+=step){
+          const n=Math.max(16, Math.round(16*r/step));
+          for(let a=0;a<n;a++){
+            const ang=a*Math.PI*2/n;
+            const lx=cur.lx+Math.cos(ang)*r, ly=cur.ly+Math.sin(ang)*r;
+            const w=worldOf(s.bid,lx,ly);
+            if(ok(s,w[0],w[1])) return {i,c:s.color,bid:s.bid,from:[+cur.lx.toFixed(1),+cur.ly.toFixed(1)],to:[+lx.toFixed(1),+ly.toFixed(1)],r,clips:now};
+          }
+        }
+        return {i,c:s.color,bid:s.bid,from:[+cur.lx.toFixed(1),+cur.ly.toFixed(1)],to:null,r:null,clips:now};
+      }).filter(Boolean);
+    },
+    nudgePlan(maxR=36, step=2){
+      const minDist=SR*2+4;
+      function localOf(s){
+        const b=boards[s.bid];
+        const dx=s.x-b.x, dy=s.y-b.y, c=Math.cos(-b.r), sn=Math.sin(-b.r);
+        return {lx:dx*c-dy*sn, ly:dx*sn+dy*c};
+      }
+      function worldOf(bid,lx,ly){
+        return xform([[lx,ly]], boards[bid].x, boards[bid].y, boards[bid].r)[0];
+      }
+      function clearAt(s,x,y){
+        const own=worldBoard(boards[s.bid]);
+        if(!pip(x,y,own)) return false;
+        for(const t of screws){
+          if(t===s || t.removed || t.bid!==s.bid) continue;
+          if(Math.hypot(x-t.x,y-t.y)<minDist) return false;
+        }
+        for(const b of boards){
+          if(b.removed || b.z<=s.z) continue;
+          if(!screws.some(t=>t.bid===b.id && !t.removed)) continue;
+          if(circleHitsPoly(x,y,BLOCK_R,worldBoard(b))) return false;
+        }
+        if(!glassMelted){
+          for(const g of glass){
+            if(circleHitsPoly(x,y,GLASS_R,g.poly)) return false;
+          }
+        }
+        return true;
+      }
+      return screws.map((s,i)=>{
+        if(s.removed) return null;
+        if(clearAt(s,s.x,s.y)) return null;
+        const cur=localOf(s);
+        for(let r=step;r<=maxR;r+=step){
+          const n=Math.max(16, Math.round(16*r/step));
+          for(let a=0;a<n;a++){
+            const ang=a*Math.PI*2/n;
+            const lx=cur.lx+Math.cos(ang)*r, ly=cur.ly+Math.sin(ang)*r;
+            const w=worldOf(s.bid,lx,ly);
+            if(clearAt(s,w[0],w[1])) return {i,c:s.color,bid:s.bid,from:[+cur.lx.toFixed(1),+cur.ly.toFixed(1)],to:[+lx.toFixed(1),+ly.toFixed(1)],r};
+          }
+        }
+        return {i,c:s.color,bid:s.bid,from:[+cur.lx.toFixed(1),+cur.ly.toFixed(1)],to:null,r:null};
+      }).filter(Boolean);
     },
     levels: LEVELS.length
   };
