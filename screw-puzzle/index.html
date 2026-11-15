@@ -137,11 +137,11 @@ button.ghost{
 
   const SCREW = {
     green:'#3ddc5a', brown:'#8B5A2B', purple:'#A855F7', yellow:'#F5C400',
-    pink:'#FF5A9A', blue:'#3BA3F0', orange:'#FF8A3D'
+    pink:'#FF5A9A', blue:'#3BA3F0', orange:'#FF8A3D', cyan:'#1ec8c8'
   };
   const SCREW_IN = {
     green:'#d8ffb0', brown:'#e8c9a0', purple:'#f0d4ff', yellow:'#fff4b0',
-    pink:'#ffd0e4', blue:'#d0eeff', orange:'#ffe0c4'
+    pink:'#ffd0e4', blue:'#d0eeff', orange:'#ffe0c4', cyan:'#c8fffc'
   };
 
   function rect(w,h){ return [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]]; }
@@ -202,122 +202,205 @@ button.ghost{
 
   /* boards: {s, x,y,r,col,z, sc:[[lx,ly,color],...] }  queue: color names */
   const LEVELS = [
-    { // 1 very easy, two separate boards
+    { // 1 简单但一块板上至少两色
       slots:2, items:{add:1,clear:1,melt:0,unlock:0},
       queue:['green','brown'],
       boards:[
-        {s:['rect',168,100], x:130,y:340,r:-0.12, col:'#FFE56A', z:1, sc:[[-52,-24,'green'],[52,-24,'green'],[0,26,'green']]},
-        {s:['rect',160,100], x:258,y:460,r:0.16, col:'#7FE0F0', z:0, sc:[[-48,-24,'brown'],[48,-24,'brown'],[0,26,'brown']]}
+        {s:['rect',176,108], x:140,y:350,r:-0.12, col:'#FFE56A', z:1, sc:[[-54,-28,'green'],[54,-28,'brown'],[0,28,'green']]},
+        {s:['rect',176,108], x:252,y:462,r:0.16, col:'#7FE0F0', z:0, sc:[[-54,-28,'brown'],[54,-28,'green'],[0,28,'brown']]}
       ]
     },
-    { // 2 stacked: must clear green first
+    { // 2 三色混在每块板上，开始叠压
       slots:2, items:{add:1,clear:1,melt:0,unlock:0},
       queue:['green','brown','purple'],
       boards:[
-        {s:['rect',210,86], x:195,y:300,r:0, col:'#FFE56A', z:2, sc:[[-72,0,'green'],[0,0,'green'],[72,0,'green']]},
-        {s:['l',170,150,68,false], x:145,y:400,r:0, col:'#FFB0D0', z:1, sc:[[-50,-40,'brown'],[40,-40,'brown'],[-50,40,'brown']]},
-        {s:['rect',150,96], x:255,y:500,r:0.1, col:'#C0EC70', z:0, sc:[[-46,-22,'purple'],[46,-22,'purple'],[0,26,'purple']]}
+        {s:['l',186,164,72,false], x:148,y:335,r:-0.18, col:'#FFB0D0', z:2, sc:[[-64,-45,'green'],[64,-45,'brown'],[0,-45,'purple']]},
+        {s:['rect',198,92], x:236,y:445,r:0.12, col:'#7FE0F0', z:1, sc:[[-62,0,'brown'],[0,0,'purple'],[62,0,'green']]},
+        {s:['hex',76], x:132,y:530,r:0.1, col:'#C0EC70', z:0, sc:[[-28,-16,'purple'],[28,-16,'green'],[0,28,'brown']]}
       ]
     },
-    { // 3 L + bar, two colors open
+    { // 3 四色，L+条，要轮换盒子
       slots:2, items:{add:1,clear:1,melt:0,unlock:0},
       queue:['green','brown','yellow','purple'],
       boards:[
-        {s:['l',180,160,70,true], x:250,y:320,r:-0.2, col:'#7FE0F0', z:3, sc:[[50,-45,'green'],[-40,-45,'green'],[55,40,'green']]},
-        {s:['rect',180,90], x:140,y:430,r:0.15, col:'#FFB0D0', z:2, sc:[[-55,0,'brown'],[0,0,'brown'],[55,0,'brown']]},
-        {s:['l',160,150,66,false], x:250,y:500,r:0.3, col:'#FFE56A', z:1, sc:[[-45,-40,'yellow'],[40,-40,'yellow'],[-45,40,'yellow']]},
-        {s:['hex',72], x:110,y:540,r:0, col:'#D0B8F0', z:0, sc:[[-28,-16,'purple'],[28,-16,'purple'],[0,28,'purple']]}
+        {s:['l',188,168,72,true], x:250,y:318,r:-0.22, col:'#7FE0F0', z:3, sc:[[64,-46,'green'],[-64,-46,'brown'],[0,-46,'yellow']]},
+        {s:['rect',200,88], x:145,y:430,r:0.12, col:'#FFB0D0', z:2, sc:[[-64,0,'brown'],[0,0,'purple'],[64,0,'green']]},
+        {s:['l',170,150,66,false], x:255,y:505,r:0.28, col:'#FFE56A', z:1, sc:[[-58,-42,'yellow'],[58,-42,'purple'],[-52,48,'brown']]},
+        {s:['hex',72], x:108,y:538,r:0, col:'#D0B8F0', z:0, sc:[[-26,-14,'yellow'],[26,-14,'purple'],[0,26,'green']]}
       ]
     },
-    { // 4 first star
+    { // 4 星形混色（像参考图），五色
       slots:2, items:{add:1,clear:1,melt:0,unlock:1},
       queue:['green','brown','purple','yellow','pink'],
       boards:[
-        {s:['star',86], x:195,y:360,r:0, col:'#FFB0D0', z:4, sc:[[0,-36,'green'],[34,12,'green'],[-34,12,'green']]},
-        {s:['l',170,150,66,false], x:120,y:300,r:-0.4, col:'#7FE0F0', z:3, sc:[[-48,-40,'brown'],[36,-40,'brown'],[-48,40,'brown']]},
-        {s:['l',170,150,66,true], x:275,y:300,r:0.4, col:'#C0EC70', z:2, sc:[[48,-40,'purple'],[-36,-40,'purple'],[48,40,'purple']]},
-        {s:['rect',200,86], x:195,y:500,r:0, col:'#FFE56A', z:1, sc:[[-70,0,'yellow'],[0,0,'yellow'],[70,0,'yellow']]},
-        {s:['hex',70], x:195,y:548,r:0.2, col:'#FFC8A0', z:0, sc:[[-26,-16,'pink'],[26,-16,'pink'],[0,26,'pink']]}
+        {s:['star',92], x:196,y:368,r:0.05, col:'#FFB0D0', z:4, sc:[[0,-32,'green'],[30,10,'brown'],[-30,10,'purple'],[20,-16,'yellow'],[-20,-16,'pink']]},
+        {s:['l',176,156,68,false], x:112,y:300,r:-0.42, col:'#7FE0F0', z:3, sc:[[-60,-43,'brown'],[58,-43,'green'],[0,-43,'yellow']]},
+        {s:['l',176,156,68,true], x:278,y:300,r:0.42, col:'#C0EC70', z:2, sc:[[60,-43,'purple'],[-58,-43,'pink'],[0,-43,'brown']]},
+        {s:['rect',210,84], x:196,y:500,r:0, col:'#FFE56A', z:1, sc:[[-70,0,'yellow'],[0,0,'pink']]},
+        {s:['hex',70], x:196,y:548,r:0.15, col:'#FFC8A0', z:0, sc:[[-24,-14,'purple'],[24,-14,'green']]}
       ]
     },
-    { // 5 two green boxes, layered greens
+    { // 5 槽位紧张，五色更密
       slots:2, items:{add:1,clear:1,melt:0,unlock:1},
-      queue:['green','brown','green','yellow','purple'],
+      queue:['green','brown','yellow','purple','pink'],
       boards:[
-        {s:['rect',200,80], x:195,y:280,r:0, col:'#FFE56A', z:4, sc:[[-70,0,'green'],[0,0,'green'],[70,0,'green']]},
-        {s:['t',190,140,64], x:195,y:390,r:0, col:'#FFB0D0', z:3, sc:[[-60,-40,'brown'],[60,-40,'brown'],[0,40,'brown']]},
-        {s:['u',180,130,56], x:195,y:500,r:0, col:'#7FE0F0', z:2, sc:[[-62,-30,'green'],[62,-30,'green'],[0,36,'green']]},
-        {s:['l',160,140,64,false], x:115,y:548,r:0.15, col:'#C0EC70', z:1, sc:[[-44,-34,'yellow'],[34,-34,'yellow'],[-44,36,'yellow']]},
-        {s:['l',160,140,64,true], x:275,y:548,r:-0.15, col:'#D0B8F0', z:0, sc:[[44,-34,'purple'],[-34,-34,'purple'],[44,36,'purple']]}
+        {s:['t',200,136,62], x:196,y:300,r:0, col:'#FFE56A', z:4, sc:[[-70,-38,'green'],[70,-38,'brown'],[0,-38,'purple'],[0,42,'green']]},
+        {s:['u',200,130,56], x:196,y:430,r:0, col:'#FFB0D0', z:3, sc:[[-70,-28,'brown'],[70,-28,'yellow'],[0,36,'pink']]},
+        {s:['l',168,146,64,false], x:108,y:520,r:0.1, col:'#7FE0F0', z:2, sc:[[-56,-40,'yellow'],[54,-40,'purple'],[-50,46,'brown']]},
+        {s:['l',168,146,64,true], x:284,y:520,r:-0.1, col:'#C0EC70', z:1, sc:[[56,-40,'purple'],[-54,-40,'pink'],[50,46,'green']]},
+        {s:['hex',68], x:196,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-24,-14,'pink'],[24,-14,'yellow']]}
       ]
     },
-    { // 6 first glass over yellow
+    { // 6 首次玻璃，四色但仍要道具
       slots:2, items:{add:1,clear:1,melt:1,unlock:1},
       queue:['green','brown','yellow','purple'],
       boards:[
-        {s:['plus',80,56], x:195,y:310,r:0.2, col:'#7FE0F0', z:3, sc:[[0,-50,'green'],[-50,0,'green'],[50,0,'green']]},
-        {s:['rect',170,90], x:130,y:430,r:-0.1, col:'#FFB0D0', z:2, sc:[[-50,0,'brown'],[0,0,'brown'],[50,0,'brown']]},
-        {s:['rect',160,90], x:255,y:430,r:0.1, col:'#FFE56A', z:1, sc:[[-46,0,'yellow'],[0,0,'yellow'],[46,0,'yellow']]},
-        {s:['hex',78], x:195,y:545,r:0, col:'#D0B8F0', z:0, sc:[[-30,-16,'purple'],[30,-16,'purple'],[0,30,'purple']]}
+        {s:['plus',86,56], x:196,y:305,r:0.2, col:'#7FE0F0', z:3, sc:[[0,-54,'green'],[-54,0,'brown'],[54,0,'yellow'],[0,54,'green']]},
+        {s:['rect',176,90], x:124,y:430,r:-0.1, col:'#FFB0D0', z:2, sc:[[-54,0,'brown'],[0,0,'purple'],[54,0,'green']]},
+        {s:['rect',168,90], x:268,y:430,r:0.1, col:'#FFE56A', z:1, sc:[[-50,0,'yellow'],[0,0,'brown'],[50,0,'purple']]},
+        {s:['hex',78], x:196,y:540,r:0, col:'#D0B8F0', z:0, sc:[[-30,-16,'yellow'],[30,-16,'purple']]}
       ],
-      glass:[{s:['rect',150,80], x:255,y:430,r:0.1}]
+      glass:[{s:['rect',156,82], x:268,y:430,r:0.1}]
     },
-    { // 7 star + two L, 5 colors, glass
+    { // 7 星+双L，六色，玻璃
       slots:2, items:{add:2,clear:1,melt:1,unlock:1},
       queue:['green','brown','purple','yellow','pink','blue'],
       boards:[
-        {s:['star',80], x:195,y:355,r:-0.1, col:'#FFB0D0', z:5, sc:[[0,-34,'green'],[32,12,'green'],[-32,12,'green']]},
-        {s:['l',180,160,68,false], x:115,y:320,r:-0.35, col:'#7FE0F0', z:4, sc:[[-52,-42,'brown'],[40,-42,'brown'],[-52,42,'brown']]},
-        {s:['l',180,160,68,true], x:275,y:320,r:0.35, col:'#C0EC70', z:3, sc:[[52,-42,'purple'],[-40,-42,'purple'],[52,42,'purple']]},
-        {s:['rect',210,84], x:195,y:490,r:0, col:'#FFE56A', z:2, sc:[[-72,0,'yellow'],[0,0,'yellow'],[72,0,'yellow']]},
-        {s:['hex',68], x:115,y:548,r:0, col:'#FFC8A0', z:1, sc:[[-24,-14,'pink'],[24,-14,'pink'],[0,24,'pink']]},
-        {s:['hex',68], x:275,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-24,-14,'blue'],[24,-14,'blue'],[0,24,'blue']]}
+        {s:['star',84], x:196,y:350,r:-0.08, col:'#FFB0D0', z:5, sc:[[0,-30,'green'],[28,10,'brown'],[-28,10,'purple'],[18,-14,'yellow'],[-18,-14,'pink']]},
+        {s:['l',184,166,70,false], x:110,y:315,r:-0.38, col:'#7FE0F0', z:4, sc:[[-64,-45,'brown'],[62,-45,'green'],[0,-45,'blue'],[-54,52,'purple']]},
+        {s:['l',184,166,70,true], x:282,y:315,r:0.38, col:'#C0EC70', z:3, sc:[[64,-45,'purple'],[-62,-45,'yellow'],[0,-45,'brown']]},
+        {s:['rect',214,82], x:196,y:490,r:0, col:'#FFE56A', z:2, sc:[[-72,0,'yellow'],[0,0,'blue']]},
+        {s:['hex',66], x:112,y:548,r:0, col:'#FFC8A0', z:1, sc:[[-22,-12,'pink'],[22,-12,'blue']]},
+        {s:['hex',66], x:280,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-22,-12,'pink'],[22,-12,'green']]}
       ],
-      glass:[{s:['rect',130,70], x:195,y:490,r:0}]
+      glass:[{s:['rect',140,70], x:196,y:490,r:0}]
     },
-    { // 8 six colors, plus and U
+    { // 8 六色更密，顺序很重要
       slots:2, items:{add:2,clear:2,melt:1,unlock:1},
-      queue:['green','brown','yellow','purple','pink','blue','orange'],
+      queue:['green','brown','yellow','purple','pink','blue'],
       boards:[
-        {s:['plus',88,58], x:195,y:300,r:0, col:'#FFE56A', z:5, sc:[[0,-56,'green'],[0,56,'green'],[-56,0,'green']]},
-        {s:['t',200,140,62], x:195,y:400,r:3.1416, col:'#FFB0D0', z:4, sc:[[-60,-40,'brown'],[60,-40,'brown'],[0,40,'brown']]},
-        {s:['u',200,140,58], x:195,y:510,r:0, col:'#7FE0F0', z:3, sc:[[-70,-30,'yellow'],[70,-30,'yellow'],[0,42,'yellow']]},
-        {s:['l',150,130,60,false], x:100,y:300,r:0.5, col:'#C0EC70', z:2, sc:[[-40,-32,'purple'],[30,-32,'purple'],[-40,32,'purple']]},
-        {s:['l',150,130,60,true], x:290,y:300,r:-0.5, col:'#FFC8A0', z:1, sc:[[40,-32,'pink'],[-30,-32,'pink'],[40,32,'pink']]},
-        {s:['rect',160,80], x:120,y:548,r:-0.08, col:'#D0B8F0', z:0, sc:[[-48,0,'blue'],[0,0,'blue'],[48,0,'blue']]},
-        {s:['rect',160,80], x:270,y:548,r:0.08, col:'#C0EC70', z:0, sc:[[-48,0,'orange'],[0,0,'orange'],[48,0,'orange']]}
+        {s:['plus',90,58], x:196,y:298,r:0, col:'#FFE56A', z:5, sc:[[0,-58,'green'],[0,58,'brown'],[-58,0,'yellow'],[58,0,'purple']]},
+        {s:['t',210,140,62], x:196,y:405,r:3.1416, col:'#FFB0D0', z:4, sc:[[-68,-40,'brown'],[68,-40,'green'],[0,-40,'pink'],[0,42,'blue']]},
+        {s:['u',210,136,58], x:196,y:508,r:0, col:'#7FE0F0', z:3, sc:[[-74,-30,'yellow'],[74,-30,'purple'],[0,40,'pink']]},
+        {s:['l',156,136,60,false], x:96,y:300,r:0.48, col:'#C0EC70', z:2, sc:[[-46,-34,'purple'],[42,-34,'blue'],[-46,34,'green']]},
+        {s:['l',156,136,60,true], x:296,y:300,r:-0.48, col:'#FFC8A0', z:1, sc:[[46,-34,'pink'],[-42,-34,'yellow']]},
+        {s:['hex',70], x:196,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-24,-14,'blue'],[24,-14,'brown']]}
       ],
-      glass:[{s:['rect',140,70], x:195,y:510,r:0}]
+      glass:[{s:['rect',150,68], x:196,y:508,r:0}]
     },
-    { // 9 closer to the screenshot layout but smaller
+    { // 9 接近参考图布局，六色层层叠
       slots:2, items:{add:2,clear:2,melt:1,unlock:1},
-      queue:['green','brown','purple','yellow','pink','blue'],
+      queue:['green','brown','purple','yellow','pink','cyan'],
       boards:[
-        {s:['l',190,170,72,true], x:125,y:330,r:-0.55, col:'#7FE0F0', z:5, sc:[[-55,-48,'green'],[50,-48,'green'],[55,50,'green']]},
-        {s:['star',90], x:195,y:410,r:0.15, col:'#FFB0D0', z:4, sc:[[0,-38,'brown'],[36,14,'brown'],[-36,14,'brown']]},
-        {s:['l',190,170,72,false], x:265,y:330,r:0.55, col:'#C0EC70', z:3, sc:[[55,-48,'purple'],[-50,-48,'purple'],[-55,50,'purple']]},
-        {s:['l',180,150,68,false], x:125,y:520,r:0.2, col:'#FFE56A', z:2, sc:[[-50,-38,'yellow'],[40,-38,'yellow'],[-50,42,'yellow']]},
-        {s:['l',180,150,68,true], x:265,y:520,r:-0.2, col:'#7FE0F0', z:1, sc:[[50,-38,'pink'],[-40,-38,'pink'],[50,42,'pink']]},
-        {s:['hex',72], x:195,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-28,-16,'blue'],[28,-16,'blue'],[0,28,'blue']]}
+        {s:['l',196,176,74,true], x:118,y:325,r:-0.55, col:'#7FE0F0', z:5, sc:[[-66,-48,'green'],[66,-48,'brown'],[0,-48,'purple'],[58,54,'yellow']]},
+        {s:['star',94], x:196,y:408,r:0.12, col:'#FFB0D0', z:4, sc:[[0,-32,'brown'],[30,12,'green'],[-30,12,'pink'],[20,-16,'cyan'],[-20,-16,'purple']]},
+        {s:['l',196,176,74,false], x:274,y:325,r:0.55, col:'#C0EC70', z:3, sc:[[66,-48,'yellow'],[-66,-48,'pink'],[0,-48,'cyan']]},
+        {s:['l',180,154,68,false], x:118,y:515,r:0.18, col:'#FFE56A', z:2, sc:[[-60,-40,'yellow'],[58,-40,'purple']]},
+        {s:['l',180,154,68,true], x:274,y:515,r:-0.18, col:'#D0B8F0', z:1, sc:[[60,-40,'cyan'],[-58,-40,'brown']]},
+        {s:['hex',72], x:196,y:548,r:0, col:'#FFC8A0', z:0, sc:[[-26,-14,'pink'],[26,-14,'green']]}
       ],
-      glass:[{s:['hex',78], x:195,y:548,r:0}]
+      glass:[{s:['hex',80], x:196,y:548,r:0}]
     },
-    { // 10 hardest here, still far simpler than 87
+    { // 10 七色，双层玻璃
       slots:2, items:{add:2,clear:2,melt:1,unlock:1},
-      queue:['green','brown','purple','yellow','pink','blue','orange','green'],
+      queue:['green','brown','purple','yellow','pink','blue','orange'],
       boards:[
-        {s:['star',84], x:195,y:350,r:0, col:'#FFB0D0', z:6, sc:[[0,-24,'green'],[22,8,'green'],[-22,8,'green']]},
-        {s:['plus',78,54], x:195,y:350,r:0.4, col:'#FFE56A', z:5, sc:[[0,-50,'brown'],[50,0,'brown'],[0,50,'brown']]},
-        {s:['l',180,160,68,false], x:110,y:300,r:-0.3, col:'#7FE0F0', z:4, sc:[[-50,-42,'purple'],[40,-42,'purple'],[-50,42,'purple']]},
-        {s:['l',180,160,68,true], x:280,y:300,r:0.3, col:'#C0EC70', z:3, sc:[[50,-42,'yellow'],[-40,-42,'yellow'],[50,42,'yellow']]},
-        {s:['t',200,130,60], x:195,y:500,r:0, col:'#FFC8A0', z:2, sc:[[-64,-34,'pink'],[64,-34,'pink'],[0,36,'pink']]},
-        {s:['u',190,120,52], x:195,y:548,r:0, col:'#D0B8F0', z:1, sc:[[-64,-28,'blue'],[64,-28,'blue'],[0,34,'blue']]},
-        {s:['hex',64], x:95,y:548,r:0, col:'#7FE0F0', z:0, sc:[[-22,-12,'orange'],[22,-12,'orange'],[0,22,'orange']]},
-        {s:['hex',64], x:295,y:548,r:0, col:'#FFE56A', z:0, sc:[[-22,-12,'green'],[22,-12,'green'],[0,22,'green']]}
+        {s:['star',86], x:196,y:345,r:0, col:'#FFB0D0', z:6, sc:[[0,-28,'green'],[26,9,'brown'],[-26,9,'purple'],[17,-14,'yellow']]},
+        {s:['plus',80,54], x:196,y:345,r:0.4, col:'#FFE56A', z:5, sc:[[0,-52,'brown'],[52,0,'green'],[0,52,'pink']]},
+        {s:['l',184,166,70,false], x:106,y:298,r:-0.28, col:'#7FE0F0', z:4, sc:[[-62,-45,'purple'],[60,-45,'yellow'],[0,-45,'orange']]},
+        {s:['l',184,166,70,true], x:286,y:298,r:0.28, col:'#C0EC70', z:3, sc:[[62,-45,'yellow'],[-60,-45,'pink'],[0,-45,'blue']]},
+        {s:['t',206,128,60], x:196,y:492,r:0, col:'#FFC8A0', z:2, sc:[[-68,-32,'pink'],[68,-32,'orange']]},
+        {s:['u',198,118,52], x:196,y:548,r:0, col:'#D0B8F0', z:1, sc:[[-68,-26,'blue'],[68,-26,'orange']]},
+        {s:['hex',62], x:92,y:548,r:0, col:'#7FE0F0', z:0, sc:[[-20,-12,'blue'],[20,-12,'purple']]},
+        {s:['hex',62], x:300,y:548,r:0, col:'#FFE56A', z:0, sc:[[-20,-12,'green'],[20,-12,'brown']]}
       ],
       glass:[
-        {s:['rect',170,70], x:195,y:500,r:0},
-        {s:['rect',170,60], x:195,y:548,r:0}
+        {s:['rect',176,68], x:196,y:492,r:0},
+        {s:['rect',176,58], x:196,y:548,r:0}
+      ]
+    },
+    { // 11 更乱，青+橙加入队列压力
+      slots:2, items:{add:2,clear:2,melt:1,unlock:1},
+      queue:['green','brown','cyan','purple','yellow','pink','orange'],
+      boards:[
+        {s:['l',200,176,74,true], x:120,y:318,r:-0.5, col:'#7FE0F0', z:5, sc:[[-68,-48,'green'],[66,-48,'brown'],[0,-48,'cyan'],[58,54,'purple']]},
+        {s:['star',90], x:196,y:400,r:-0.15, col:'#FFB0D0', z:4, sc:[[0,-30,'brown'],[28,11,'yellow'],[-28,11,'pink'],[18,-15,'orange'],[-18,-15,'green']]},
+        {s:['l',200,176,74,false], x:272,y:318,r:0.5, col:'#C0EC70', z:3, sc:[[68,-48,'cyan'],[-66,-48,'yellow'],[0,-48,'orange'],[32,-80,'purple']]},
+        {s:['rect',220,80], x:196,y:500,r:0.05, col:'#FFE56A', z:2, sc:[[-76,0,'yellow'],[-25,0,'pink'],[25,0,'cyan']]},
+        {s:['hex',70], x:112,y:548,r:0, col:'#FFC8A0', z:1, sc:[[-56,16,'pink'],[40,8,'purple'],[0,24,'orange']]},
+        {s:['hex',70], x:280,y:548,r:0, col:'#D0B8F0', z:0, sc:[[0,40,'green'],[48,16,'brown']]}
+      ],
+      glass:[{s:['rect',200,70], x:196,y:500,r:0.05}]
+    },
+    { // 12 七色满盘
+      slots:2, items:{add:2,clear:2,melt:1,unlock:1},
+      queue:['green','brown','purple','cyan','yellow','pink','blue'],
+      boards:[
+        {s:['plus',88,58], x:196,y:300,r:0.15, col:'#FFE56A', z:6, sc:[[0,-56,'green'],[56,0,'brown'],[0,56,'purple'],[-56,0,'cyan']]},
+        {s:['star',82], x:196,y:400,r:0.2, col:'#FFB0D0', z:5, sc:[[0,-28,'brown'],[26,9,'yellow'],[-26,9,'pink'],[16,-14,'blue'],[-16,-14,'green']]},
+        {s:['l',176,160,68,false], x:104,y:310,r:-0.25, col:'#7FE0F0', z:4, sc:[[-60,-44,'purple'],[58,-44,'yellow'],[0,-44,'cyan']]},
+        {s:['l',176,160,68,true], x:288,y:310,r:0.25, col:'#C0EC70', z:3, sc:[[60,-44,'yellow'],[-58,-44,'pink'],[0,-44,'blue']]},
+        {s:['t',210,130,60], x:196,y:500,r:0, col:'#FFC8A0', z:2, sc:[[-70,-32,'pink'],[70,-32,'purple']]},
+        {s:['u',200,120,54], x:196,y:548,r:0, col:'#D0B8F0', z:1, sc:[[-70,-26,'blue'],[70,-26,'cyan']]},
+        {s:['hex',64], x:96,y:548,r:0, col:'#A8E8C0', z:0, sc:[[-22,-12,'green'],[22,-12,'brown']]}
+      ],
+      glass:[
+        {s:['rect',180,66], x:196,y:500,r:0},
+        {s:['rect',160,56], x:196,y:548,r:0}
+      ]
+    },
+    { // 13 接近 87 关密度
+      slots:2, items:{add:2,clear:2,melt:1,unlock:1},
+      queue:['green','brown','yellow','purple','cyan','pink','orange','blue'],
+      boards:[
+        {s:['l',198,178,74,true], x:116,y:322,r:-0.58, col:'#7FE0F0', z:6, sc:[[-68,-50,'green'],[66,-50,'brown'],[0,-50,'yellow'],[58,56,'purple']]},
+        {s:['star',96], x:196,y:405,r:0.08, col:'#FFB0D0', z:5, sc:[[0,-33,'brown'],[31,12,'green'],[-31,12,'cyan'],[20,-16,'pink'],[-20,-16,'orange']]},
+        {s:['l',198,178,74,false], x:276,y:322,r:0.58, col:'#C0EC70', z:4, sc:[[68,-50,'yellow'],[-66,-50,'blue'],[0,-50,'purple'],[-58,56,'brown']]},
+        {s:['l',182,156,68,false], x:116,y:518,r:0.2, col:'#FFE56A', z:3, sc:[[-62,-42,'cyan'],[58,-42,'pink'],[0,-42,'blue'],[-52,48,'green']]},
+        {s:['l',182,156,68,true], x:276,y:518,r:-0.2, col:'#D0B8F0', z:2, sc:[[62,-42,'orange'],[-58,-42,'yellow'],[0,-42,'cyan']]},
+        {s:['plus',70,50], x:196,y:330,r:0.3, col:'#FFC8A0', z:1, sc:[[0,-44,'blue'],[44,0,'orange']]},
+        {s:['hex',70], x:196,y:548,r:0, col:'#A8E8C0', z:0, sc:[[-24,-14,'pink'],[24,-14,'purple']]}
+      ],
+      glass:[
+        {s:['rect',130,70], x:196,y:330,r:0.3},
+        {s:['hex',78], x:196,y:548,r:0}
+      ]
+    },
+    { // 14 八色队列，两槽非常紧
+      slots:2, items:{add:2,clear:2,melt:1,unlock:1},
+      queue:['green','brown','purple','yellow','pink','cyan','blue','orange'],
+      boards:[
+        {s:['star',88], x:196,y:348,r:-0.2, col:'#FFB0D0', z:7, sc:[[0,-30,'green'],[28,10,'brown'],[-28,10,'purple'],[18,-14,'yellow'],[-18,-14,'pink']]},
+        {s:['plus',84,56], x:196,y:348,r:0.5, col:'#FFE56A', z:6, sc:[[0,-54,'brown'],[54,0,'green'],[0,54,'cyan'],[-54,0,'blue']]},
+        {s:['l',188,168,70,false], x:102,y:300,r:-0.32, col:'#7FE0F0', z:5, sc:[[-64,-46,'purple'],[62,-46,'yellow'],[0,-46,'orange']]},
+        {s:['l',188,168,70,true], x:290,y:300,r:0.32, col:'#C0EC70', z:4, sc:[[64,-46,'yellow'],[-62,-46,'pink'],[0,-46,'cyan']]},
+        {s:['t',216,136,62], x:196,y:488,r:0, col:'#FFC8A0', z:3, sc:[[-74,-34,'pink'],[74,-34,'blue'],[0,-34,'orange']]},
+        {s:['u',208,124,54], x:196,y:548,r:0, col:'#D0B8F0', z:2, sc:[[-72,-28,'cyan'],[72,-28,'purple']]},
+        {s:['hex',64], x:90,y:548,r:0.1, col:'#A8E8C0', z:1, sc:[[-22,-12,'blue'],[22,-12,'brown']]},
+        {s:['hex',64], x:302,y:548,r:-0.1, col:'#7FE0F0', z:0, sc:[[-22,-12,'orange'],[22,-12,'green']]}
+      ],
+      glass:[
+        {s:['rect',190,68], x:196,y:488,r:0},
+        {s:['rect',180,56], x:196,y:548,r:0}
+      ]
+    },
+    { // 15 最难，层层叠叠接近参考图
+      slots:2, items:{add:2,clear:2,melt:1,unlock:1},
+      queue:['green','brown','purple','yellow','pink','cyan','blue','orange'],
+      boards:[
+        {s:['l',200,180,76,true], x:114,y:320,r:-0.6, col:'#7FE0F0', z:7, sc:[[-70,-50,'green'],[68,-50,'brown'],[0,-50,'purple'],[60,58,'cyan']]},
+        {s:['star',98], x:196,y:408,r:0.18, col:'#FFB0D0', z:6, sc:[[0,-34,'brown'],[32,12,'green'],[-32,12,'yellow'],[20,-16,'pink'],[-20,-16,'orange']]},
+        {s:['l',200,180,76,false], x:278,y:320,r:0.6, col:'#C0EC70', z:5, sc:[[70,-50,'purple'],[-68,-50,'yellow'],[0,-50,'blue'],[-60,58,'cyan']]},
+        {s:['l',186,160,70,false], x:114,y:520,r:0.22, col:'#FFE56A', z:4, sc:[[-64,-44,'yellow'],[60,-44,'pink'],[0,-44,'blue']]},
+        {s:['l',186,160,70,true], x:278,y:520,r:-0.22, col:'#D0B8F0', z:3, sc:[[64,-44,'pink'],[88,8,'purple']]},
+        {s:['plus',74,52], x:196,y:300,r:0.25, col:'#FFC8A0', z:2, sc:[[0,-46,'cyan'],[46,0,'orange']]},
+        {s:['t',200,120,56], x:196,y:500,r:3.1416, col:'#A8E8C0', z:1, sc:[[-66,-32,'blue'],[66,-32,'green']]},
+        {s:['hex',72], x:196,y:548,r:0, col:'#FFE56A', z:0, sc:[[-26,-14,'orange'],[26,-14,'brown']]}
+      ],
+      glass:[
+        {s:['rect',140,64], x:196,y:300,r:0.25},
+        {s:['rect',180,64], x:196,y:500,r:3.1416},
+        {s:['hex',80], x:196,y:548,r:0}
       ]
     }
   ];
@@ -618,6 +701,7 @@ button.ghost{
     }
 
     const memo=new Map();
+    let nodes=0, nodeLimit=2000000, timedOut=false;
     function key(mask, qHead, slotState, melt, sc, it){
       return mask.toString(16)+'|'+qHead+'|'+slotState+'|'+melt+'|'+sc+'|'+it;
     }
@@ -641,6 +725,7 @@ button.ghost{
 
     function rec(mask, sl, qrest, melt, it){
       if(mask===0) return true;
+      if(++nodes>nodeLimit){ timedOut=true; return false; }
       const k=key(mask, qrest.map(b=>b.color+b.cap+b.fill).join(''), packSlots(sl), melt?1:0, sl.length, packIt(it));
       if(memo.has(k)) return memo.get(k);
       const legal=[];
@@ -662,6 +747,11 @@ button.ghost{
         }
         return rec(nmask, sl2, qr2, melt, it);
       }
+      legal.sort((a,b)=>{
+        const da=sl[a[1]].fill+1>=sl[a[1]].cap?0:1;
+        const db=sl[b[1]].fill+1>=sl[b[1]].cap?0:1;
+        return da-db;
+      });
       for(const [sid,si] of legal){
         const sl2=sl.map(b=>b? Object.assign({},b):null);
         sl2[si].fill++;
@@ -700,7 +790,8 @@ button.ghost{
 
     const sl=[], qrest=cloneQ(initialQueue);
     for(let i=0;i<startSlots;i++) sl.push(qrest.length? qrest.shift(): null);
-    return rec(initMask, sl, qrest, false, startItems);
+    const ok=rec(initMask, sl, qrest, false, startItems);
+    return {ok, nodes, timeout:timedOut, memo:memo.size};
   }
 
   function validateScrews(){
@@ -1000,7 +1091,58 @@ button.ghost{
       return screws.filter(s=>!s.removed && !screwBlocked(s) && findBoxFor(s.color)).length;
     },
     validate: validateScrews,
-    solvable(useItems){ return snapshotSolvable(!!useItems); },
+    solvable(useItems){ const r=snapshotSolvable(!!useItems); return r.ok===true; },
+    solvableInfo(useItems){ return snapshotSolvable(!!useItems); },
+    boardColors(){
+      return boards.map((b,bi)=>{
+        const cols=screws.filter(s=>s.bid===bi).map(s=>s.color);
+        return {n:cols.length, colors:[...new Set(cols)]};
+      });
+    },
+    sampleBoard(bi, step=10){
+      const b=boards[bi];
+      const pts=[];
+      // local bbox guess
+      for(let lx=-120; lx<=120; lx+=step){
+        for(let ly=-120; ly<=120; ly+=step){
+          const wp=(()=>{const p=xform([[lx,ly]], b.x, b.y, b.r)[0]; return {x:p[0], y:p[1]};})();
+          if(!pip(wp.x,wp.y,worldBoard(b))) continue;
+          const over=[];
+          boards.forEach((ob,oi)=>{
+            if(oi===bi) return;
+            if(ob.z<=b.z) return;
+            if(screws.some(s=>s.bid===oi && !s.removed) && pip(wp.x,wp.y,worldBoard(ob))) over.push('B'+oi);
+          });
+          glass.forEach((g,gi)=>{ if(pip(wp.x,wp.y,g.poly)) over.push('G'+gi); });
+          if(over.length===0) pts.push({lx,ly,x:+wp.x.toFixed(1),y:+wp.y.toFixed(1)});
+        }
+      }
+      return pts;
+    },
+    dump(){
+      return {
+        items:{...items}, slotCount,
+        glass:glass.map(g=>({x:g.x||g,})),
+        boxes:slots.filter(s=>s.box).map(s=>({color:s.box.color,fill:s.box.fill.length,cap:s.box.cap})),
+        queue:queue.map(b=>b.color),
+        boards:boards.map((b,bi)=>({bi, z:b.z, x:b.x, y:b.y, s:b.s})),
+        screws:screws.map((s,i)=>{
+          let why=null;
+          if(s.removed) why='removed';
+          else if(screwBlocked(s)){
+            const over=[];
+            boards.forEach((b,bi)=>{
+              if(b.z>s.z && screws.some(t=>t.bid===bi && !t.removed) && pip(s.x,s.y,worldBoard(b))) over.push('B'+bi);
+            });
+            if(!glassMelted){
+              glass.forEach((g,gi)=>{ if(pip(s.x,s.y,g.poly)) over.push('G'+gi); });
+            }
+            why=over.join('+')||'blocked?';
+          }
+          return {i, c:s.color, bid:s.bid, z:s.z, x:+s.x.toFixed(1), y:+s.y.toFixed(1), why, box:!!findBoxFor(s.color)};
+        })
+      };
+    },
     levels: LEVELS.length
   };
 })();
