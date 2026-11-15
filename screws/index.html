@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<title>拧螺丝</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  height:100%;overflow:hidden;background:#3b2a1a;color:#3a2a0a;
+  font-family:system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+  overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
+}
+#wrap{position:relative;line-height:0}
+canvas{display:block;border-radius:16px;box-shadow:0 8px 28px rgba(0,0,0,.4)}
+#overlay{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(28,18,10,.55);border-radius:16px;gap:14px;text-align:center;padding:20px 16px;
+}
+#overlay.hidden{display:none}
+#overlay h1{font-size:36px;letter-spacing:4px;font-weight:800;color:#fff8e7;text-shadow:0 3px 0 #7a4a16,0 6px 12px rgba(0,0,0,.35)}
+#overlay p{font-size:15px;color:#fff8e7;line-height:1.7;max-width:270px;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+#overlay .stats{font-size:18px;color:#fff8e7;font-weight:700;line-height:1.85;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+#overlay .stats b{color:#ffd54a}
+button{
+  background:#ffd54a;color:#3a2a0a;border:3px solid #b06a12;padding:12px 36px;border-radius:999px;
+  font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 4px 0 #b06a12;
+  font-family:inherit;-webkit-tap-highlight-color:transparent;
+}
+button:active{transform:translateY(2px);box-shadow:0 2px 0 #b06a12}
+#hud{
+  position:absolute;top:10px;left:0;right:0;display:none;justify-content:space-between;gap:8px;
+  padding:0 14px;font-size:15px;font-weight:800;color:#fff8e7;
+  text-shadow:0 2px 0 rgba(0,0,0,.4);pointer-events:none;
+}
+#hud.show{display:flex}
+#hud b{color:#ffd54a}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">
+    <span>关卡 <b id="level">1</b></span>
+    <span>拧紧 <b id="done">0/0</b></span>
+    <span>得分 <b id="score">0</b></span>
+  </div>
+  <div id="overlay">
+    <h1 id="title">拧螺丝</h1>
+    <p id="msg">手指顺时针拧螺丝，全部拧紧就过关</p>
+    <div id="endStats" class="stats" hidden></div>
+    <button id="start" type="button">开始游戏</button>
+  </div>
+</div>
+<script>
+(function(){
+  const store = {
+    get(k){ try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k,v){ try { localStorage.setItem(k,v); } catch (e) {} }
+  };
+
+  const W = 390, H = 700;
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+  cv.width = W; cv.height = H;
+  const $ = (id) => document.getElementById(id);
+  const overlay = $('overlay'), startBtn = $('start');
+  const titleEl = $('title'), msgEl = $('msg'), endStats = $('endStats'), hud = $('hud');
+
+  function fit(){
+    const sc = Math.min((innerWidth - 16) / W, (innerHeight - 16) / H);
+    cv.style.width = (W * sc) + 'px';
+    cv.style.height = (H * sc) + 'px';
+  }
+  addEventListener('resize', fit);
+  addEventListener('orientationchange', fit);
+  fit();
+
+  let best = +(store.get('screwsBest') || 0);
+
+  const LEVELS = [
+    { turns: 1.0, spots: [[195,320],[130,430],[260,430]] },
+    { turns: 1.15, spots: [[130,280],[260,280],[130,430],[260,430]] },
+    { turns: 1.25, spots: [[195,250],[120,350],[270,350],[145,470],[245,470]] },
+    { turns: 1.4, spots: [[120,250],[195,250],[270,250],[120,390],[195,390],[270,390]] },
+    { turns: 1.55, spots: [[195,230],[115,310],[275,310],[100,420],[195,420],[290,420],[150,520],[240,520]] },
+    { turns: 1.8, spots: [[120,230],[195,230],[270,230],[100,330],[195,330],[290,330],[120,430],[195,430],[270,430],[195,530]] }
+  ];
+
+  let playing = false;
+  let levelIdx = 0;
+  let score = 0;
+  let screws = [];
+  let drag = null;
+  let sparks = [];
+  let popups = [];
+  let levelStart = 0;
+  let elapsed = 0;
+  let last = 0;
+  let idleT = 0;
+  let justCleared = false;
+
+  function makeScrew(x, y, need, r){
+    return {
+      x: x, y: y, r: r || 34,
+      need: need,
+      prog: 0,
+      angle: Math.random() * Math.PI * 2,
+      done: false,
+      pulse: 0,
+      wobble: 0
+    };
+  }
+
+  function loadLevel(i){
+    const lv = LEVELS[i];
+    const r = i >= 4 ? 28 : 34;
+    screws = lv.spots.map(([x,y]) => makeScrew(x, y, lv.turns, r));
+    drag = null;
+    sparks = [];
+    popups = [];
+    levelStart = performance.now();
+    justCleared = false;
+    $('level').textContent = String(i + 1);
+    updateDone();
+  }
+
+  function updateDone(){
+    const n = screws.filter(s => s.done).length;
+    $('done').textContent = n + '/' + screws.length;
+    $('score').textContent = String(score);
+  }
+
+  function showStart(){
+    playing = false;
+    titleEl.textContent = '拧螺丝';
+    msgEl.hidden = false;
+    msgEl.textContent = '手指顺时针拧螺丝，全部拧紧就过关';
+    endStats.hidden = false;
+    endStats.innerHTML = best ? ('最佳 <b>' + best + '</b>') : '';
+    if (!best) endStats.hidden = true;
+    startBtn.textContent = '开始游戏';
+    overlay.classList.remove('hidden');
+    hud.classList.remove('show');
+  }
+
+  function showLevelClear(){
+    playing = false;
+    drag = null;
+    const lastLevel = levelIdx >= LEVELS.length - 1;
+    const t = (elapsed).toFixed(1);
+    if (lastLevel){
+      if (score > best){
+        best = score;
+        store.set('screwsBest', String(best));
+      }
+      titleEl.textContent = '全部通关';
+      msgEl.hidden = true;
+      endStats.hidden = false;
+      endStats.innerHTML = '得分 <b>' + score + '</b><br>最佳 <b>' + best + '</b>';
+      startBtn.textContent = '再来一次';
+    } else {
+      titleEl.textContent = '过关！';
+      msgEl.hidden = true;
+      endStats.hidden = false;
+      endStats.innerHTML = '第 <b>' + (levelIdx + 1) + '</b> 关完成<br>用时 <b>' + t + '</b> 秒<br>得分 <b>' + score + '</b>';
+      startBtn.textContent = '下一关';
+    }
+    overlay.classList.remove('hidden');
+    hud.classList.remove('show');
+  }
+
+  function startFromButton(){
+    const next = startBtn.textContent === '下一关';
+    if (next){
+      levelIdx += 1;
+      loadLevel(levelIdx);
+    } else {
+      levelIdx = 0;
+      score = 0;
+      loadLevel(0);
+    }
+    playing = true;
+    overlay.classList.add('hidden');
+    hud.classList.add('show');
+    updateDone();
+    last = performance.now();
+  }
+
+  function canvasPos(e){
+    const rect = cv.getBoundingClientRect();
+    const src = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+    return {
+      x: (src.clientX - rect.left) * (W / rect.width),
+      y: (src.clientY - rect.top) * (H / rect.height)
+    };
+  }
+
+  function wrapDelta(d){
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
+  function pickScrew(x, y){
+    let bestS = null, bestD = 1e9;
+    for (let i = 0; i < screws.length; i++){
+      const s = screws[i];
+      const d = Math.hypot(x - s.x, y - s.y);
+      if (d < s.r + 22 && d < bestD){ bestD = d; bestS = s; }
+    }
+    return bestS;
+  }
+
+  function addSparks(s){
+    for (let i = 0; i < 16; i++){
+      const a = (i / 16) * Math.PI * 2 + Math.random() * 0.2;
+      const sp = 80 + Math.random() * 140;
+      sparks.push({
+        x: s.x, y: s.y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: 0.45 + Math.random() * 0.25,
+        t: 0,
+        col: i % 2 ? '#ffd54a' : '#fff8e7'
+      });
+    }
+    popups.push({ x: s.x, y: s.y - s.r - 6, t: 0, text: '拧紧！' });
+  }
+
+  function tighten(s, delta){
+    if (s.done) return;
+    if (delta <= 0){
+      s.wobble = Math.min(1, s.wobble + 0.15);
+      return;
+    }
+    const add = delta / (Math.PI * 2 * s.need);
+    s.prog = Math.min(1, s.prog + add);
+    s.angle += delta;
+    if (s.prog >= 1){
+      s.prog = 1;
+      s.done = true;
+      s.pulse = 1;
+      score += 100 + Math.max(0, Math.round(40 - elapsed));
+      updateDone();
+      addSparks(s);
+      if (screws.every(x => x.done) && !justCleared){
+        justCleared = true;
+        const leftover = Math.max(0, 25 - elapsed);
+        score += 200 + Math.round(leftover * 8);
+        updateDone();
+        setTimeout(showLevelClear, 450);
+      }
+    }
+  }
+
+  function onDown(e){
+    if (e && e.cancelable) e.preventDefault();
+    if (!playing) return;
+    const p = canvasPos(e);
+    const s = pickScrew(p.x, p.y);
+    if (!s) return;
+    drag = { s: s, lastA: Math.atan2(p.y - s.y, p.x - s.x), id: (e.pointerId != null) ? e.pointerId : 0 };
+    try { if (e.pointerId != null) cv.setPointerCapture(e.pointerId); } catch (err) {}
+  }
+
+  function onMove(e){
+    if (!playing || !drag) return;
+    if (e && e.cancelable) e.preventDefault();
+    const p = canvasPos(e);
+    const a = Math.atan2(p.y - drag.s.y, p.x - drag.s.x);
+    const d = wrapDelta(a - drag.lastA);
+    drag.lastA = a;
+    tighten(drag.s, d);
+  }
+
+  function onUp(e){
+    if (e && e.cancelable) e.preventDefault();
+    drag = null;
+  }
+
+  function drawWood(){
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#c58a45');
+    g.addColorStop(0.5, '#b87a38');
+    g.addColorStop(1, '#a86b2c');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(80,40,10,.18)';
+    ctx.lineWidth = 10;
+    for (let y = 20; y < H; y += 28){
+      ctx.beginPath();
+      ctx.moveTo(0, y + Math.sin(y * 0.2) * 3);
+      ctx.bezierCurveTo(120, y + 8, 240, y - 6, W, y + Math.cos(y * 0.13) * 4);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,230,180,.06)';
+    ctx.fillRect(30, 90, W - 60, H - 140);
+    ctx.strokeStyle = 'rgba(70,35,8,.35)';
+    ctx.lineWidth = 8;
+    ctx.strokeRect(26, 86, W - 52, H - 132);
+    ctx.strokeStyle = 'rgba(255,220,160,.15)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(34, 94, W - 68, H - 148);
+  }
+
+  function drawHole(s){
+    ctx.beginPath();
+    ctx.arc(s.x, s.y + 3, s.r - 6, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(30,16,6,.45)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r - 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#4a2e14';
+    ctx.fill();
+  }
+
+  function drawScrew(s){
+    const sink = s.prog * 7;
+    const cx = s.x + (s.wobble ? Math.sin(idleT * 40) * s.wobble * 1.6 : 0);
+    const cy = s.y + sink;
+    const scale = 1 - s.prog * 0.12;
+    const rad = s.r * scale;
+    const shine = s.pulse;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    ctx.beginPath();
+    ctx.arc(2, 5, rad + 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,' + (0.18 + s.prog * 0.12) + ')';
+    ctx.fill();
+
+    if (!s.done){
+      ctx.save();
+      ctx.rotate(s.angle);
+      ctx.strokeStyle = 'rgba(90,90,95,.55)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 8; i++){
+        const a = i * Math.PI / 4;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * (rad - 2), Math.sin(a) * (rad - 2));
+        ctx.lineTo(Math.cos(a) * (rad + 5), Math.sin(a) * (rad + 5));
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    const mg = ctx.createRadialGradient(-rad * 0.3, -rad * 0.35, 4, 0, 0, rad);
+    mg.addColorStop(0, s.done ? '#e8e4d8' : '#d8d4cc');
+    mg.addColorStop(0.45, s.done ? '#c4c0b4' : '#9ea3a8');
+    mg.addColorStop(1, s.done ? '#8a8678' : '#6a7178');
+    ctx.beginPath();
+    ctx.arc(0, 0, rad, 0, Math.PI * 2);
+    ctx.fillStyle = mg;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = s.done ? '#6a6658' : '#4a5056';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, rad * 0.72, 0, Math.PI * 2);
+    ctx.fillStyle = s.done ? '#d2cec2' : '#b0b5ba';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.2)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.rotate(s.angle);
+    ctx.strokeStyle = '#2c3034';
+    ctx.lineWidth = Math.max(4, rad * 0.16);
+    ctx.lineCap = 'round';
+    const arm = rad * 0.46;
+    ctx.beginPath();
+    ctx.moveTo(-arm, 0); ctx.lineTo(arm, 0);
+    ctx.moveTo(0, -arm); ctx.lineTo(0, arm);
+    ctx.stroke();
+    ctx.restore();
+
+    if (!s.done){
+      ctx.beginPath();
+      ctx.arc(0, 0, rad + 7, -Math.PI / 2, -Math.PI / 2 + s.prog * Math.PI * 2);
+      ctx.strokeStyle = '#ffd54a';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, rad + 7, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,.18)';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+
+    if (shine > 0){
+      ctx.beginPath();
+      ctx.arc(0, 0, rad + 10 * (1 - shine), 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,213,74,' + shine + ')';
+      ctx.lineWidth = 6 * shine;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawSparks(dt){
+    for (let i = sparks.length - 1; i >= 0; i--){
+      const p = sparks[i];
+      p.t += dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 220 * dt;
+      const k = 1 - p.t / p.life;
+      if (k <= 0){ sparks.splice(i, 1); continue; }
+      ctx.globalAlpha = k;
+      ctx.fillStyle = p.col;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3.2 * k + 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.font = 'bold 16px system-ui,-apple-system,sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = popups.length - 1; i >= 0; i--){
+      const p = popups[i];
+      p.t += dt;
+      if (p.t > 0.7){ popups.splice(i, 1); continue; }
+      ctx.globalAlpha = 1 - p.t / 0.7;
+      ctx.fillStyle = '#ffd54a';
+      ctx.strokeStyle = 'rgba(0,0,0,.35)';
+      ctx.lineWidth = 3;
+      ctx.strokeText(p.text, p.x, p.y - p.t * 28);
+      ctx.fillText(p.text, p.x, p.y - p.t * 28);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawHint(){
+    if (!playing || screws.some(s => s.prog > 0) || elapsed > 4) return;
+    const s = screws[0];
+    if (!s || s.done) return;
+    const t = (idleT * 1.4) % 1;
+    const a = -Math.PI / 2 + t * Math.PI * 1.6;
+    const r = s.r + 26;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.strokeStyle = 'rgba(255,213,74,' + (0.85 - t * 0.6) + ')';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, -Math.PI / 2, a);
+    ctx.stroke();
+    const ax = Math.cos(a) * r, ay = Math.sin(a) * r;
+    ctx.translate(ax, ay);
+    ctx.rotate(a + Math.PI / 2);
+    ctx.fillStyle = 'rgba(255,213,74,' + (0.85 - t * 0.6) + ')';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-7, -12);
+    ctx.lineTo(7, -12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function update(dt){
+    idleT += dt;
+    if (playing) elapsed = (performance.now() - levelStart) / 1000;
+    screws.forEach(s => {
+      s.pulse = Math.max(0, s.pulse - dt * 2);
+      s.wobble = Math.max(0, s.wobble - dt * 2.5);
+    });
+  }
+
+  let lastDt = 1 / 60;
+
+  function drawFrame(){
+    drawWood();
+    screws.forEach(drawHole);
+    screws.forEach(drawScrew);
+    drawHint();
+    drawSparks(lastDt);
+  }
+  function loop2(now){
+    if (!last) last = now;
+    lastDt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(lastDt);
+    drawFrame();
+    requestAnimationFrame(loop2);
+  }
+
+  startBtn.addEventListener('click', function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    startFromButton();
+  });
+  startBtn.addEventListener('touchend', function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    startFromButton();
+  }, {passive:false});
+
+  if (window.PointerEvent){
+    cv.addEventListener('pointerdown', onDown, {passive:false});
+    cv.addEventListener('pointermove', onMove, {passive:false});
+    cv.addEventListener('pointerup', onUp, {passive:false});
+    cv.addEventListener('pointercancel', onUp, {passive:false});
+  } else {
+    cv.addEventListener('touchstart', onDown, {passive:false});
+    cv.addEventListener('touchmove', onMove, {passive:false});
+    cv.addEventListener('touchend', onUp, {passive:false});
+    cv.addEventListener('mousedown', onDown, {passive:false});
+    addEventListener('mousemove', onMove, {passive:false});
+    addEventListener('mouseup', onUp, {passive:false});
+  }
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+  loadLevel(0);
+  showStart();
+  last = performance.now();
+  requestAnimationFrame(loop2);
+
+  window.__screws = {
+    start: startFromButton,
+    get state(){
+      return {
+        playing: playing,
+        level: levelIdx + 1,
+        score: score,
+        best: best,
+        done: screws.filter(s => s.done).length,
+        total: screws.length,
+        button: startBtn.textContent,
+        title: titleEl.textContent
+      };
+    },
+    twist(index, turns){
+      const s = screws[index];
+      if (!s) return;
+      tighten(s, turns * Math.PI * 2);
+    },
+    loadPreview(){
+      levelIdx = 0;
+      loadLevel(0);
+    }
+  };
+})();
+</script>
+</body>
+</html>
