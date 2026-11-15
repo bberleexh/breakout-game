@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<!-- GAME=2048 -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<title>2048</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  height:100%;height:100dvh;overflow:hidden;background:#faf8ef;color:#776e65;
+  font-family:system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+  overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+#app{
+  width:100%;max-width:390px;padding:16px 16px 20px;
+  display:flex;flex-direction:column;gap:14px;
+}
+header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.brand h1{
+  font-size:52px;line-height:1;font-weight:800;letter-spacing:-1px;color:#776e65;
+}
+.hint{margin-top:8px;font-size:13px;color:#a39486;font-weight:600;line-height:1.4}
+.scores{display:flex;gap:8px;flex-shrink:0}
+.badge{
+  min-width:72px;background:#bbada0;color:#fff;border-radius:8px;
+  padding:6px 12px 8px;text-align:center;
+}
+.badge span{
+  display:block;font-size:11px;font-weight:700;letter-spacing:1px;color:#eee4da;line-height:1.3;
+}
+.badge b{display:block;font-size:22px;font-weight:800;line-height:1.2;margin-top:2px}
+.toolbar{display:flex;gap:10px;justify-content:flex-end}
+button{
+  font-family:inherit;font-size:15px;font-weight:800;border:0;border-radius:8px;
+  padding:10px 18px;cursor:pointer;color:#fff;
+  -webkit-tap-highlight-color:transparent;
+}
+#newGame{background:#f67c5f;box-shadow:0 3px 0 #d65c3b}
+#newGame:active{transform:translateY(2px);box-shadow:0 1px 0 #d65c3b}
+#undo{background:#8f7a66;box-shadow:0 3px 0 #6d5c4d}
+#undo:active:not(:disabled){transform:translateY(2px);box-shadow:0 1px 0 #6d5c4d}
+#undo:disabled{opacity:.45;cursor:default;box-shadow:none}
+#boardWrap{position:relative;width:100%;aspect-ratio:1}
+#board{
+  width:100%;height:100%;background:#bbada0;border-radius:10px;padding:10px;
+  display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(4,1fr);gap:10px;
+}
+.cell{background:#cdc1b4;border-radius:6px;position:relative;min-width:0;min-height:0}
+.tile{
+  position:absolute;inset:0;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  font-weight:800;line-height:1;color:#776e65;
+  font-size:36px;
+}
+.tile.n8,.tile.n16,.tile.n32,.tile.n64,.tile.n128,.tile.n256,.tile.n512,
+.tile.n1024,.tile.n2048,.tile.nsuper{color:#f9f6f2}
+.tile.n2{background:#eee4da}
+.tile.n4{background:#ede0c8}
+.tile.n8{background:#f2b179}
+.tile.n16{background:#f59563}
+.tile.n32{background:#f67c5f}
+.tile.n64{background:#f65e3b}
+.tile.n128{background:#edcf72;font-size:32px;box-shadow:0 0 0 1px rgba(237,207,114,.25),0 0 18px rgba(237,207,114,.35)}
+.tile.n256{background:#edcc61;font-size:32px;box-shadow:0 0 18px rgba(237,204,97,.35)}
+.tile.n512{background:#edc850;font-size:32px;box-shadow:0 0 18px rgba(237,200,80,.4)}
+.tile.n1024{background:#edc53f;font-size:24px;box-shadow:0 0 22px rgba(237,197,63,.45)}
+.tile.n2048{background:#edc22e;font-size:24px;box-shadow:0 0 26px rgba(237,194,46,.55)}
+.tile.nsuper{background:#3c3a32;font-size:20px}
+@keyframes tile-appear{from{transform:scale(0)}to{transform:scale(1)}}
+@keyframes tile-pop{0%{transform:scale(0.85)}50%{transform:scale(1.12)}100%{transform:scale(1)}}
+.tile.new{animation:tile-appear 180ms ease-out}
+.tile.merged{animation:tile-pop 200ms ease-out;z-index:1}
+#overlay{
+  position:absolute;inset:0;border-radius:10px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(238,228,218,.86);gap:10px;text-align:center;padding:24px 16px;
+  z-index:5;
+}
+#overlay.hidden{display:none}
+#overlay h2{font-size:34px;font-weight:800;color:#776e65;letter-spacing:1px}
+#overlay p{font-size:15px;color:#8f7a66;font-weight:600}
+#overlay .ovBtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+#ovPrimary{background:#f67c5f;box-shadow:0 3px 0 #d65c3b}
+#ovPrimary:active{transform:translateY(2px);box-shadow:0 1px 0 #d65c3b}
+#ovRestart{background:#8f7a66;box-shadow:0 3px 0 #6d5c4d}
+#ovRestart:active{transform:translateY(2px);box-shadow:0 1px 0 #6d5c4d}
+#ovPrimary.hidden{display:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">
+      <h1>2048</h1>
+      <p class="hint">滑动合并相同数字</p>
+    </div>
+    <div class="scores">
+      <div class="badge"><span>分数</span><b id="score">0</b></div>
+      <div class="badge"><span>最高分</span><b id="best">0</b></div>
+    </div>
+  </header>
+  <div class="toolbar">
+    <button id="undo" type="button" disabled>撤销</button>
+    <button id="newGame" type="button">新游戏</button>
+  </div>
+  <div id="boardWrap">
+    <div id="board"></div>
+    <div id="overlay" class="hidden">
+      <h2 id="ovTitle"></h2>
+      <p id="ovMsg"></p>
+      <div class="ovBtns">
+        <button id="ovPrimary" type="button">继续游戏</button>
+        <button id="ovRestart" type="button">再来一局</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const SIZE = 4;
+  const CELLS = SIZE * SIZE;
+  const STORE_KEY = 'g2048Best';
+  const SWIPE_MIN = 28;
+
+  const store = {
+    get: function(k){ try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function(k,v){ try { localStorage.setItem(k,v); } catch (e) {} }
+  };
+
+  const $ = function(id){ return document.getElementById(id); };
+  const boardEl = $('board');
+  const overlayEl = $('overlay');
+  const ovTitle = $('ovTitle');
+  const ovMsg = $('ovMsg');
+  const ovPrimary = $('ovPrimary');
+  const ovRestart = $('ovRestart');
+  const scoreEl = $('score');
+  const bestEl = $('best');
+  const undoBtn = $('undo');
+  const appEl = $('app');
+
+  const cells = [];
+  for (let i = 0; i < CELLS; i++){
+    const d = document.createElement('div');
+    d.className = 'cell';
+    boardEl.appendChild(d);
+    cells.push(d);
+  }
+
+  let board = Array(CELLS).fill(0);
+  let score = 0;
+  let best = 0;
+  let won = false;
+  let continued = false;
+  let lost = false;
+  let undoSnap = null;
+  let lastMerged = [];
+  let lastSpawn = -1;
+  let rngState = 0;
+
+  function makeSeed(){
+    return (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+  }
+  function rand(){
+    rngState = (rngState + 0x6D2B79F5) >>> 0;
+    let t = rngState;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  function readBest(){
+    try {
+      const n = parseInt(store.get(STORE_KEY), 10);
+      return (Number.isFinite(n) && n > 0) ? n : 0;
+    } catch (e) { return 0; }
+  }
+  function writeBest(n){
+    try { store.set(STORE_KEY, String(n)); } catch (e) {}
+  }
+
+  function flatten(arr){
+    if (!arr) return null;
+    let flat;
+    if (arr.length === CELLS) flat = arr;
+    else if (arr.length === SIZE && arr[0] && arr[0].length === SIZE) flat = arr[0].concat(arr[1], arr[2], arr[3]);
+    else return null;
+    const out = [];
+    for (let i = 0; i < CELLS; i++){
+      const v = parseInt(flat[i], 10);
+      out.push(Number.isFinite(v) && v > 0 ? v : 0);
+    }
+    return out;
+  }
+
+  function emptyCount(b){
+    let n = 0;
+    for (let i = 0; i < CELLS; i++) if (!(b || board)[i]) n++;
+    return n;
+  }
+
+  function canMoveOn(b){
+    b = b || board;
+    for (let i = 0; i < CELLS; i++) if (!b[i]) return true;
+    for (let r = 0; r < SIZE; r++){
+      for (let c = 0; c < SIZE; c++){
+        const v = b[r * SIZE + c];
+        if (c < SIZE - 1 && b[r * SIZE + c + 1] === v) return true;
+        if (r < SIZE - 1 && b[(r + 1) * SIZE + c] === v) return true;
+      }
+    }
+    return false;
+  }
+
+  function tileClass(v){
+    if (v >= 4096) return 'nsuper';
+    return 'n' + v;
+  }
+
+  function snapshot(){
+    return {
+      board: board.slice(),
+      score: score,
+      won: won,
+      continued: continued,
+      lost: lost,
+      rngState: rngState
+    };
+  }
+
+  function hideOverlay(){
+    overlayEl.classList.add('hidden');
+  }
+  function showWin(){
+    ovTitle.textContent = '你赢了！';
+    ovMsg.textContent = '可以继续挑战更高分数';
+    ovPrimary.textContent = '继续游戏';
+    ovPrimary.classList.remove('hidden');
+    overlayEl.classList.remove('hidden');
+  }
+  function showLose(){
+    ovTitle.textContent = '游戏结束';
+    ovMsg.textContent = '没有可移动了';
+    ovPrimary.classList.add('hidden');
+    overlayEl.classList.remove('hidden');
+  }
+  function syncOverlay(){
+    if (won && !continued) showWin();
+    else if (lost) showLose();
+    else hideOverlay();
+  }
+
+  function render(){
+    scoreEl.textContent = String(score);
+    bestEl.textContent = String(best);
+    undoBtn.disabled = !undoSnap;
+    for (let i = 0; i < CELLS; i++){
+      const v = board[i];
+      const cell = cells[i];
+      if (!v){
+        cell.innerHTML = '';
+        continue;
+      }
+      const el = document.createElement('div');
+      el.className = 'tile ' + tileClass(v);
+      el.textContent = String(v);
+      if (i === lastSpawn) el.classList.add('new');
+      if (lastMerged.indexOf(i) !== -1) el.classList.add('merged');
+      cell.innerHTML = '';
+      cell.appendChild(el);
+    }
+  }
+
+  function spawn(){
+    const empty = [];
+    for (let i = 0; i < CELLS; i++) if (!board[i]) empty.push(i);
+    if (!empty.length) return -1;
+    const idx = empty[Math.floor(rand() * empty.length)];
+    board[idx] = rand() < 0.1 ? 4 : 2;
+    return idx;
+  }
+
+  function slideDir(dir){
+    const next = board.slice();
+    let gain = 0;
+    let changed = false;
+    const mergedAt = [];
+
+    function process(indices){
+      const vals = [];
+      for (let i = 0; i < SIZE; i++){
+        if (next[indices[i]]) vals.push(next[indices[i]]);
+      }
+      const out = [];
+      let i = 0;
+      while (i < vals.length){
+        if (i + 1 < vals.length && vals[i] === vals[i + 1]){
+          const m = vals[i] * 2;
+          out.push(m);
+          gain += m;
+          mergedAt.push(indices[out.length - 1]);
+          i += 2;
+        } else {
+          out.push(vals[i]);
+          i += 1;
+        }
+      }
+      while (out.length < SIZE) out.push(0);
+      for (let k = 0; k < SIZE; k++){
+        if (next[indices[k]] !== out[k]) changed = true;
+        next[indices[k]] = out[k];
+      }
+    }
+
+    if (dir === 'left'){
+      for (let r = 0; r < SIZE; r++) process([r*4, r*4+1, r*4+2, r*4+3]);
+    } else if (dir === 'right'){
+      for (let r = 0; r < SIZE; r++) process([r*4+3, r*4+2, r*4+1, r*4]);
+    } else if (dir === 'up'){
+      for (let c = 0; c < SIZE; c++) process([c, c+4, c+8, c+12]);
+    } else if (dir === 'down'){
+      for (let c = 0; c < SIZE; c++) process([c+12, c+8, c+4, c]);
+    } else {
+      return { next: next, gain: 0, changed: false, mergedAt: [] };
+    }
+    return { next: next, gain: gain, changed: changed, mergedAt: mergedAt };
+  }
+
+  function continueGame(){
+    if (!won) return false;
+    continued = true;
+    syncOverlay();
+    return true;
+  }
+
+  function doMove(dir){
+    dir = String(dir || '').toLowerCase();
+    if (dir === 'l') dir = 'left';
+    if (dir === 'r') dir = 'right';
+    if (dir === 'u') dir = 'up';
+    if (dir === 'd') dir = 'down';
+    if (lost) return false;
+    if (won && !continued){
+      continued = true;
+      hideOverlay();
+    }
+    const res = slideDir(dir);
+    if (!res.changed) return false;
+    undoSnap = snapshot();
+    board = res.next;
+    score += res.gain;
+    if (score > best){
+      best = score;
+      writeBest(best);
+    }
+    let justWon = false;
+    if (!won && board.some(function(v){ return v >= 2048; })){
+      won = true;
+      continued = false;
+      justWon = true;
+    }
+    lastMerged = res.mergedAt;
+    lastSpawn = spawn();
+    lost = !canMoveOn(board);
+    render();
+    if (justWon) showWin();
+    else if (lost) showLose();
+    else hideOverlay();
+    return true;
+  }
+
+  function undo(){
+    if (!undoSnap) return false;
+    board = undoSnap.board.slice();
+    score = undoSnap.score;
+    won = undoSnap.won;
+    continued = undoSnap.continued;
+    lost = undoSnap.lost;
+    rngState = undoSnap.rngState;
+    undoSnap = null;
+    lastMerged = [];
+    lastSpawn = -1;
+    render();
+    syncOverlay();
+    return true;
+  }
+
+  function reset(){
+    board = Array(CELLS).fill(0);
+    score = 0;
+    won = false;
+    continued = false;
+    lost = false;
+    undoSnap = null;
+    lastMerged = [];
+    lastSpawn = -1;
+    rngState = makeSeed();
+    spawn();
+    spawn();
+    lastMerged = [];
+    render();
+    hideOverlay();
+    return dump();
+  }
+
+  function setBoard(arr){
+    const flat = flatten(arr);
+    if (!flat) return false;
+    board = flat;
+    lost = !canMoveOn(board);
+    won = board.some(function(v){ return v >= 2048; });
+    continued = won;
+    undoSnap = null;
+    lastMerged = [];
+    lastSpawn = -1;
+    render();
+    syncOverlay();
+    return true;
+  }
+
+  function load(state){
+    if (!state || typeof state !== 'object') return dump();
+    if (state.board){
+      const flat = flatten(state.board);
+      if (flat) board = flat;
+    }
+    if (state.score != null){
+      const s = parseInt(state.score, 10);
+      score = Number.isFinite(s) && s > 0 ? s : 0;
+    }
+    if (state.best != null){
+      const b = parseInt(state.best, 10);
+      best = Number.isFinite(b) && b > 0 ? b : 0;
+      writeBest(best);
+    }
+    if (state.won != null) won = !!state.won;
+    else won = board.some(function(v){ return v >= 2048; });
+    if (state.continued != null) continued = !!state.continued;
+    else continued = won;
+    if (state.lost != null) lost = !!state.lost;
+    else lost = !canMoveOn(board);
+    if (state.rngState != null) rngState = state.rngState >>> 0;
+    undoSnap = null;
+    lastMerged = [];
+    lastSpawn = -1;
+    render();
+    syncOverlay();
+    return dump();
+  }
+
+  function dump(){
+    const grid = [];
+    for (let r = 0; r < SIZE; r++) grid.push(board.slice(r*SIZE, r*SIZE+SIZE));
+    return {
+      board: board.slice(),
+      grid: grid,
+      score: score,
+      best: best,
+      won: won,
+      continued: continued,
+      lost: lost,
+      alive: !lost,
+      canUndo: !!undoSnap,
+      empty: emptyCount(board),
+      overlay: overlayEl.classList.contains('hidden') ? null : ovTitle.textContent,
+      winOverlay: !!(won && !continued && !overlayEl.classList.contains('hidden')),
+      loseOverlay: !!(lost && !(won && !continued) && !overlayEl.classList.contains('hidden'))
+    };
+  }
+
+  function fit(){
+    appEl.style.transform = 'none';
+    const rect = appEl.getBoundingClientRect();
+    const pad = 8;
+    const sc = Math.min((innerWidth - pad) / rect.width, (innerHeight - pad) / rect.height, 1);
+    if (sc < 0.995){
+      appEl.style.transformOrigin = 'center center';
+      appEl.style.transform = 'scale(' + sc + ')';
+    }
+  }
+
+  best = readBest();
+  reset();
+  fit();
+  addEventListener('resize', fit);
+  addEventListener('orientationchange', function(){ setTimeout(fit, 80); });
+
+  $('newGame').addEventListener('click', function(){ reset(); });
+  undoBtn.addEventListener('click', function(){ undo(); });
+  ovPrimary.addEventListener('click', function(){ continueGame(); });
+  ovRestart.addEventListener('click', function(){ reset(); });
+
+  const KEYS = {
+    ArrowLeft:'left', ArrowRight:'right', ArrowUp:'up', ArrowDown:'down',
+    a:'left', d:'right', w:'up', s:'down',
+    A:'left', D:'right', W:'up', S:'down'
+  };
+  document.addEventListener('keydown', function(e){
+    const dir = KEYS[e.key];
+    if (!dir) return;
+    if (e.cancelable) e.preventDefault();
+    doMove(dir);
+  });
+
+  let swipeX = 0, swipeY = 0, swiping = false;
+  const wrap = $('boardWrap');
+  wrap.addEventListener('pointerdown', function(e){
+    if (e.button && e.button !== 0) return;
+    swiping = true;
+    swipeX = e.clientX;
+    swipeY = e.clientY;
+  });
+  addEventListener('pointerup', function(e){
+    if (!swiping) return;
+    swiping = false;
+    const dx = e.clientX - swipeX;
+    const dy = e.clientY - swipeY;
+    const ax = Math.abs(dx), ay = Math.abs(dy);
+    if (Math.max(ax, ay) < SWIPE_MIN) return;
+    if (ax > ay) doMove(dx > 0 ? 'right' : 'left');
+    else doMove(dy > 0 ? 'down' : 'up');
+  });
+  addEventListener('pointercancel', function(){ swiping = false; });
+
+  document.addEventListener('touchmove', function(e){
+    if (e.cancelable) e.preventDefault();
+  }, {passive:false});
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+  window.__g2048 = {
+    reset: reset,
+    dump: dump,
+    move: doMove,
+    undo: undo,
+    setBoard: setBoard,
+    load: load,
+    continueGame: continueGame,
+    get score(){ return score; },
+    get best(){ return best; }
+  };
+})();
+</script>
+</body>
+</html>
