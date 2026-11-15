@@ -202,12 +202,13 @@ button.ghost{
 
   /* boards: {s, x,y,r,col,z, sc:[[lx,ly,color],...] }  queue: color names */
   const LEVELS = [
-    { // 1 简单但一块板上至少两色
-      slots:2, items:{add:1,clear:1,melt:0,unlock:0},
-      queue:['green','brown'],
+    { // 1 简单，顶板 3 螺丝 3 色且都能点
+      slots:3, items:{add:1,clear:1,melt:0,unlock:0},
+      queue:['green','brown','purple'],
       boards:[
-        {s:['rect',176,108], x:140,y:350,r:-0.12, col:'#FFE56A', z:1, sc:[[-54,-28,'green'],[54,-28,'brown'],[0,28,'green']]},
-        {s:['rect',176,108], x:252,y:462,r:0.16, col:'#7FE0F0', z:0, sc:[[-54,-28,'brown'],[54,-28,'green'],[0,28,'brown']]}
+        {s:['rect',210,160], x:196,y:400,r:-0.05, col:'#FFE56A', z:2, sc:[[-68,-50,'green'],[68,-50,'brown'],[0,52,'purple']]},
+        {s:['rect',230,150], x:196,y:425,r:0.08, col:'#7FE0F0', z:1, sc:[[-70,-40,'brown'],[70,-40,'purple'],[0,28,'green']]},
+        {s:['hex',86], x:196,y:450,r:0.08, col:'#FFB0D0', z:0, sc:[[-30,-18,'purple'],[30,-18,'green'],[0,30,'brown']]}
       ]
     },
     { // 2 三色混在每块板上，开始叠压
@@ -244,21 +245,21 @@ button.ghost{
       slots:2, items:{add:1,clear:1,melt:0,unlock:1},
       queue:['green','brown','yellow','purple','pink'],
       boards:[
-        {s:['t',200,136,62], x:196,y:300,r:0, col:'#FFE56A', z:4, sc:[[-70,-38,'green'],[70,-38,'brown'],[0,-38,'purple'],[0,42,'green']]},
+        {s:['t',200,136,62], x:196,y:300,r:0, col:'#FFE56A', z:4, sc:[[-70,-38,'green'],[70,-38,'brown'],[0,-38,'purple'],[0,42,'yellow']]},
         {s:['u',200,130,56], x:196,y:430,r:0, col:'#FFB0D0', z:3, sc:[[-70,-28,'brown'],[70,-28,'yellow'],[0,36,'pink']]},
         {s:['l',168,146,64,false], x:108,y:520,r:0.1, col:'#7FE0F0', z:2, sc:[[-56,-40,'yellow'],[54,-40,'purple'],[-50,46,'brown']]},
         {s:['l',168,146,64,true], x:284,y:520,r:-0.1, col:'#C0EC70', z:1, sc:[[56,-40,'purple'],[-54,-40,'pink'],[50,46,'green']]},
-        {s:['hex',68], x:196,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-24,-14,'pink'],[24,-14,'yellow']]}
+        {s:['hex',68], x:196,y:548,r:0, col:'#D0B8F0', z:0, sc:[[-24,-14,'pink'],[24,-14,'green']]}
       ]
     },
     { // 6 首次玻璃，四色但仍要道具
       slots:2, items:{add:1,clear:1,melt:1,unlock:1},
       queue:['green','brown','yellow','purple'],
       boards:[
-        {s:['plus',86,56], x:196,y:305,r:0.2, col:'#7FE0F0', z:3, sc:[[0,-54,'green'],[-54,0,'brown'],[54,0,'yellow'],[0,54,'green']]},
+        {s:['plus',86,56], x:196,y:305,r:0.2, col:'#7FE0F0', z:3, sc:[[0,-54,'green'],[-54,0,'brown'],[54,0,'yellow'],[0,54,'purple']]},
         {s:['rect',176,90], x:124,y:430,r:-0.1, col:'#FFB0D0', z:2, sc:[[-54,0,'brown'],[0,0,'purple'],[54,0,'green']]},
         {s:['rect',168,90], x:268,y:430,r:0.1, col:'#FFE56A', z:1, sc:[[-50,0,'yellow'],[0,0,'brown'],[50,0,'purple']]},
-        {s:['hex',78], x:196,y:540,r:0, col:'#D0B8F0', z:0, sc:[[-30,-16,'yellow'],[30,-16,'purple']]}
+        {s:['hex',78], x:196,y:540,r:0, col:'#D0B8F0', z:0, sc:[[-30,-16,'yellow'],[30,-16,'green']]}
       ],
       glass:[{s:['rect',156,82], x:268,y:430,r:0.1}]
     },
