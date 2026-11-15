@@ -52,7 +52,7 @@ button:active{transform:translateY(2px);box-shadow:0 2px 0 #b06a12}
   </div>
   <div id="overlay">
     <h1 id="title">切水果</h1>
-    <p id="msg">手指滑动切断水果，避免碰到炸弹，漏掉三个就失败</p>
+    <p id="msg">手指滑动切断水果，不要切到炸弹，漏掉三个就失败</p>
     <div id="endStats" class="stats" hidden></div>
     <button id="start" type="button">开始游戏</button>
   </div>
@@ -135,7 +135,7 @@ button:active{transform:translateY(2px);box-shadow:0 2px 0 #b06a12}
     decorateStart();
     titleEl.textContent = '切水果';
     msgEl.hidden = false;
-    msgEl.textContent = '手指滑动切断水果，避免碰到炸弹，漏掉三个就失败';
+    msgEl.textContent = '手指滑动切断水果，不要切到炸弹，漏掉三个就失败';
     endStats.hidden = !best;
     endStats.innerHTML = best ? ('最佳 <b>' + best + '</b>') : '';
     startBtn.textContent = '开始游戏';
