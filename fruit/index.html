@@ -65,7 +65,7 @@ button:active{transform:translateY(2px);box-shadow:0 2px 0 #b06a12}
   };
 
   const W = 390, H = 700;
-  const GRAVITY = 980;
+  const GRAVITY = 420;
   const cv = document.getElementById('c');
   const ctx = cv.getContext('2d');
   cv.width = W; cv.height = H;
@@ -181,8 +181,8 @@ button:active{transform:translateY(2px);box-shadow:0 2px 0 #b06a12}
   function throwItem(isBomb){
     const x = rand(60, W - 60);
     const goingRight = x < W / 2;
-    const vx = (goingRight ? 1 : -1) * rand(40, 140);
-    const vy = -rand(720, 920);
+    const vx = (goingRight ? 1 : -1) * rand(30, 90);
+    const vy = -rand(540, 680);
     if (isBomb){
       items.push({
         type:'bomb', x:x, y:H + 30, vx:vx, vy:vy, r:28,
